@@ -20,7 +20,7 @@ It recognizes on-line handwriting (generated e.g. by smart pens) and can not rea
 
 Transcript the handwritten (generated e.g. by smart pens)
 
-    python3 smart_manuscript/reader.py --file=sample_text/the_zen_of_python.svg
+    python3 smart_manuscript/transcript.py --file=sample_text/The_Zen_of_Python.svg
 
 If you can export only pdf-files, convert this by
 
