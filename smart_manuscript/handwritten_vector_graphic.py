@@ -78,7 +78,8 @@ def _read_svg(filename, is_handwritten=None):
     """
 
     def is_black(path):
-        return (r"rgb(0%,0%,0%)" in path.getAttribute("style"))
+        return any(color in path.getAttribute("style")
+                   for color in [r"rgb(0%,0%,0%)", r"#000000"])
 
     if is_handwritten is None:
         is_handwritten = is_black
