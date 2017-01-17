@@ -43,6 +43,41 @@ A new model can be trained by
 You can use the [IAMonDo-db-1.0](http://www.iapr-tc11.org/dataset/IAMonDo/IAMonDo-db-1.0.tar.gz) database
 to train and validate the model. Place the unzipped folder IAMonDo-db-1.0 in the folder data. You may use also your personal handwritten notes, analogously to the one in the directory sample_text (see --train_my_writing)
 
+## EXAMPLE
+
+<a href="sample_text/The_Zen_of_Python.svg">
+  <img src="sample_text/The_Zen_of_Python_plain.svg" width="75%" height="75%">
+</a>
+
+Transcription:
+
+<pre>
+The Zen of Python.
+by Tim Peters
+Beantiful is better than ugly.
+Explicit is better than implicit.
+simple is better than complicated.
+Flat is better than nested.
+Sparse is better than dense.
+Readability counts.
+speaial cases aren't special enough to break the mles.
+Although practicality beats purity.
+Frrors should never pass silently.
+Unless explicitly silenced.
+In the face of ambiguity, refuse the temptation to guess.
+There should be one - and preferable only one
+- obvious way to do it.
+Aithough that way may not be obvious at
+first unless you're Dutch.
+Now is better than neve.
+Atthough never is often better than right now.
+If the implementation is hard to explain, it's a bad idea.
+If the implementation is easy to explain, it may be
+a good idea.
+Namespaces are one hanking great idea -
+let's do more of those!
+</pre>
+
 ## AUTHOR
 
 Daniel Vorberg
