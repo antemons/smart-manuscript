@@ -25,6 +25,7 @@ import tensorflow as tf
 from tensorflow.python.ops.ctc_ops import ctc_beam_search_decoder
 import stroke_features as sf
 import numpy as np
+from os import path
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
@@ -32,7 +33,7 @@ __license__ = "GPL"
 
 
 tf.app.flags.DEFINE_string(
-    "graph_path", "sample_graph",
+    "graph_path", path.join(path.dirname(__file__), '..', 'sample_graph'),
     "directory for the tensorflow-graph and variables")
 
 
