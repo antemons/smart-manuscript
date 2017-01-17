@@ -45,8 +45,8 @@ to train and validate the model. Place the unzipped folder IAMonDo-db-1.0 in the
 
 ## EXAMPLE
 
-<a href="sample_text/The_Zen_of_Python.svg">
-  <img src="sample_text/The_Zen_of_Python_plain.svg" width="75%" height="75%">
+<a href="sample_text/The_Zen_of_Python.pdf">
+  <img src="sample_text/The_Zen_of_Python.png" width="75%" height="75%">
 </a>
 
 Transcription:
