@@ -94,7 +94,7 @@ class SearchablePDF(Reader):
 def main():
     output_pdf = FLAGS.output
     if not output_pdf:
-        output_pdf = flags.file.replace(".pdf", "_searchable.pdf")
+        output_pdf = FLAGS.file.replace(".pdf", "_searchable.pdf")
     SearchablePDF().generate(FLAGS.file, output_pdf)
 
 
