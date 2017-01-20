@@ -6,7 +6,7 @@ It recognizes on-line handwriting (generated e.g. by smart pens) and can not rea
 
 ## Getting Started
 
-## SETUP
+### Setup
 
  1. Install [Tensorflow](https://www.tensorflow.org/get_started/os_setup) >= 0.12.0
 
@@ -14,19 +14,20 @@ It recognizes on-line handwriting (generated e.g. by smart pens) and can not rea
 
  3. Optional: train the graph (or use the one in sample_graph)
 
-## USAGE
+### Usage
 
-### Transcript handwritten notes
+#### Transcript handwritten notes
 
-Transcript the handwritten (generated e.g. by smart pens)
+Transcript the handwritten file (generated e.g. by smart pens)
+which must be either a PDF or a SVG
 
-    python3 smart_manuscript/transcript.py --file=sample_text/The_Zen_of_Python.svg
+    python3 smart_manuscript/transcript.py --file=sample_text/The_Zen_of_Python.pdf
 
-If you can export only pdf-files, convert this by
+Make a PDF file which is searchable and where text can be copied from:
 
-  pdftocairo -svg filename.pdf
+    python3 smart_manuscript/searchable_pdf.py --file=sample_text/The_Zen_of_Python.pdf --output=new_file.pdf
 
-### Handwritten input
+#### Handwritten input
 
 A simple application that transcript handwritten input (e.g. from a digitizer pen):
 
@@ -34,7 +35,7 @@ A simple application that transcript handwritten input (e.g. from a digitizer pe
 
 The input will be copied into the clipboard.
 
-### Train new model
+#### Train new model
 
 A new model can be trained by
 
@@ -43,7 +44,7 @@ A new model can be trained by
 You can use the [IAMonDo-db-1.0](http://www.iapr-tc11.org/dataset/IAMonDo/IAMonDo-db-1.0.tar.gz) database
 to train and validate the model. Place the unzipped folder IAMonDo-db-1.0 in the folder data. You may use also your personal handwritten notes, analogously to the one in the directory sample_text (see --train_my_writing)
 
-## EXAMPLE
+## Example
 
 <a href="sample_text/The_Zen_of_Python.pdf">
   <img src="sample_text/The_Zen_of_Python.png" width="75%" height="75%">
@@ -78,7 +79,7 @@ Namespaces are one hanking great idea -
 let's do more of those!
 </pre>
 
-## AUTHOR
+## Author
 
 Daniel Vorberg
 
@@ -86,6 +87,6 @@ Daniel Vorberg
 
 This project is licensed under the GPL License - see the [LICENSE](LICENSE) file for details
 
-## CONTACT
+## Contact
 
 Please send bug reports, patches, and other feedback to: dv(at)pks.mpg.de
