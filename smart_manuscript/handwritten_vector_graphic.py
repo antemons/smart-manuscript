@@ -25,17 +25,19 @@ import pylab as plt
 import numpy as np
 from svgpathtools import parse_path
 from stroke_features import Ink
+from os.path import basename
+import subprocess
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
 
 
-def load(svg_file, transcription_file=None):
+def load(filename, transcription_file=None):
     """ load svg file in optionally also the transcription
 
     Args:
-        svg_file (str): path to the svg_file
+        filename (str): path to the file (either PDF or SVG)
         transcription_file (str): if given, the file with the
             truth transcription of the handwritten note in the svg_file
 
@@ -45,7 +47,14 @@ def load(svg_file, transcription_file=None):
             transcription (list of str): the transcription
     """
 
-    strokes = _read_svg(svg_file)
+    if filename.endswith('.pdf') or filename.endswith('.PDF'):
+        strokes = _read_pdf(filename)
+    elif filename.endswith('.svg') or filename.endswith('.SVG'):
+        strokes = _read_svg(filename)
+    else:
+        print("file must be either PDF or SVG")
+        exit()
+
     if transcription_file is None:
         return strokes
     else:
@@ -118,6 +127,19 @@ def _read_txt(txt_file):
         textlines = [l.replace("\n", "") for l in f.readlines()]
     return textlines
 
+
+def _pdf_to_svg_tmp(pdf_path):
+    pdf_basename = basename(pdf_path)
+    svg_basename = pdf_basename.replace(".pdf", ".svg")
+    svg_path = "/tmp/" + svg_basename
+    # subprocess.call(["inkscape", "-l", svg_path, pdf_path])
+    subprocess.call(["/usr/bin/pdftocairo", "-svg", pdf_path, svg_path])
+    return svg_path
+
+
+def _read_pdf(filename, is_handwritten=None):
+    svg_filename = _pdf_to_svg_tmp(filename)
+    return _read_svg(svg_filename, is_handwritten)
 
 def main():
     """ show sample handwritten notes """

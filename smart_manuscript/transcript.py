@@ -31,7 +31,8 @@ __license__ = "GPL"
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string(
-    "file", "sample_text/The_Zen_of_Python.svg", "svg-file to transcript")
+    "file", "sample_text/The_Zen_of_Python.pdf",
+    "file to transcript (either PDF or SVG)")
 
 
 def main():
