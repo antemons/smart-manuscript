@@ -164,14 +164,13 @@ class Reader(GraphUtilities):
         """ recognize a full page
         """
         text = ""
-        ink_lines = sf.split_lines(stroke_page)
-        for i, ink_line in enumerate(ink_lines):
-            print("Read line: {:3} / {:3}".format(i + 1, len(ink_lines)),
-                  flush=True, end="\r")
+        for i, ink_line in enumerate(stroke_page.lines):
+            print(
+                "Read line: {:3} / {:3}".format(i + 1, len(stroke_page.lines)),
+                 flush=True, end="\r")
             line = self.recognize(ink_line, *args, **kwargs)[0]
             print(" {:20}".format(""), end="\r")
             print(line)
-            text += line
-            text += "\n"
+            text += line + "\n"
         print("")
         return text

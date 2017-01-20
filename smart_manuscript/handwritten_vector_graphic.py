@@ -24,6 +24,7 @@ from xml.dom import minidom
 import pylab as plt
 import numpy as np
 from svgpathtools import parse_path
+from stroke_features import Ink
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
@@ -85,12 +86,19 @@ def _read_svg(filename, is_handwritten=None):
         is_handwritten = is_black
 
     svg_dom = minidom.parse(filename)
+
+    def remove_unit(string):
+        return ''.join([x for x in string if x.isdigit()])
+    element = svg_dom.getElementsByTagName('svg')[0]
+    WIDTH = int(remove_unit(element.getAttribute("width")))
+    HEIGHT = int(remove_unit(element.getAttribute("height")))
+
     path_strings = (
         path.getAttribute('d')
         for path in svg_dom.getElementsByTagName('path')
         if is_handwritten(path))
 
-    strokes = []
+    strokes = Ink([], page_size=(WIDTH, HEIGHT))
     for path_string in path_strings:
         path = parse_path(path_string)
         polynomials = [segment.poly() for segment in path]

@@ -44,29 +44,66 @@ def lazyprop(function):
     return _lazyprop
 
 
-def split_lines(ink_of_page, min_seperation=None):
-    """ split the ink in several lines
+class Ink(list):
+    """ Set of strokes
+
+        nested list strokes (float[L,2]), the (x,y)-points for each point in
+        each stroke in each strokes
     """
-    ink_of_lines = []
-    min_x, max_x, _, _ = boundary_box(ink_of_page)
-    if min_seperation is None:
-        min_seperation = (max_x - min_x)/10
-    for stroke in ink_of_page:
-        if (not len(ink_of_lines) or
-                ink_of_lines[-1][-1][-1, 0] - min_seperation > stroke[0, 0]):
-            ink_of_lines.append([])
-        ink_of_lines[-1].append(stroke)
-    return ink_of_lines
+
+    def __init__(self, strokes, page_size=None, min_seperation=None):
+        super().__init__(strokes)
+        self.page_size = page_size
+        self.min_seperation = min_seperation
+
+    @lazyprop
+    def boundary_box(self):
+        connected_strokes = np.concatenate(self)
+        return (min(connected_strokes[:, 0]), max(connected_strokes[:, 0]),
+                min(connected_strokes[:, 1]), max(connected_strokes[:, 1]))
+
+    @lazyprop
+    def lines(self):
+        """ split the ink in several lines
+        """
+        lines = []
+        min_x, max_x, _, _ = self.boundary_box
+        if self.min_seperation is None:
+            self.min_seperation = (max_x - min_x)/10
+        for stroke in self:
+            if (not len(lines) or
+                (lines[-1][-1][-1, 0] - self.min_seperation > stroke[0, 0])):
+                lines.append(Ink([]))
+            lines[-1].append(stroke)
+        return lines
+
+#TODO(dv): remove this function and replace with the Ink methods
+# def boundary_box(strokes):
+#     try:
+#         connected_strokes = np.concatenate(strokes)
+#     except:
+#         print(strokes)
+#         raise
+#     return (min(connected_strokes[:, 0]), max(connected_strokes[:, 0]),
+#             min(connected_strokes[:, 1]), max(connected_strokes[:, 1]))
+
+#TODO(dv): remove this function and replace with the Ink methods
+# def split_lines(ink_of_page, min_seperation=None):
+#     """ split the ink in several lines
+#     """
+#     ink_of_lines = []
+#     min_x, max_x, _, _ = boundary_box(ink_of_page)
+#     if min_seperation is None:
+#         min_seperation = (max_x - min_x)/10
+#     for stroke in ink_of_page:
+#         if (not len(ink_of_lines) or
+#                 ink_of_lines[-1][-1][-1, 0] - min_seperation > stroke[0, 0]):
+#             ink_of_lines.append([])
+#         ink_of_lines[-1].append(stroke)
+#     return ink_of_lines
 
 
-def boundary_box(strokes):
-    try:
-        connected_strokes = np.concatenate(strokes)
-    except:
-        print(strokes)
-        raise
-    return (min(connected_strokes[:, 0]), max(connected_strokes[:, 0]),
-            min(connected_strokes[:, 1]), max(connected_strokes[:, 1]))
+
 
 
 class NormalizeStroke(object):
@@ -74,6 +111,7 @@ class NormalizeStroke(object):
     """
 
     def __init__(self, strokes):
+        strokes = Ink(strokes)
         self.__strokes_skew = self.normalize_skew(strokes)
         self.__strokes_slant = self.normalize_slant(self.__strokes_skew)
         self.__strokes_baseline, self.__minima, self.__maxima = \
@@ -97,15 +135,15 @@ class NormalizeStroke(object):
         """ plot current state of normalization
 
         Args:
-            strokes (nested list of float[L,2]): (x,y)-points for each point in
-                each stroke in each strokes
+            strokes (Ink): ink which is shown
+            description (str): title
         """
         if axes is not None:
             axes.set_title(description)
             for stroke in strokes:
                 axes.plot(stroke[:, 0], stroke[:, 1], 'g-')
             axes.set_aspect('equal')
-            min_x, max_x, min_y, max_y = boundary_box(strokes)
+            min_x, max_x, min_y, max_y = strokes.boundary_box
             axes.plot([min_x, max_x], [0, 0], 'k:')
             axes.plot([min_x, max_x], [1, 1], 'k:')
             axes.set_xlim([min_x, max_x])
@@ -116,15 +154,14 @@ class NormalizeStroke(object):
         """ normalize skew by an linear fit
 
         Args:
-            strokes (nested list of float[L,2]): (x,y)-points for each point in
-                each stroke in each strokes
+            strokes (Ink): ink to normalize
         """
         # TODO: only if long enough
         connected_strokes = np.concatenate(strokes)
         a, b = np.polyfit(connected_strokes[:, 0], connected_strokes[:, 1], 1)
-        return [np.column_stack([stroke[:, 0],
+        return Ink([np.column_stack([stroke[:, 0],
                                  stroke[:, 1] - (a * stroke[:, 0] + b)])
-                for stroke in strokes]
+                    for stroke in strokes])
 
     @staticmethod
     def normalize_slant(strokes):
@@ -132,8 +169,7 @@ class NormalizeStroke(object):
         """ normalize the slant (not implemented yet)
 
         Args:
-            strokes (nested list of float[L,2]): (x,y)-points for each point in
-                each stroke in each strokes
+            strokes (Ink): ink to normalize
         """
         # alphas = []
         # for stroke in strokes:
@@ -154,8 +190,7 @@ class NormalizeStroke(object):
         Fits the local minima (maxima) to the baseline (mean line), resp.
 
         Args:
-            strokes (nested list of float[L,2]): (x,y)-points for each point in
-                each stroke in each strokes
+            strokes (Ink): ink to normalize
         """
 
         minima = []
@@ -182,7 +217,7 @@ class NormalizeStroke(object):
         minima, maxima = np.array(minima), np.array(maxima)
         assert (minima.size and maxima.size)
 
-        min_x, max_x, min_y, max_y = boundary_box(strokes)
+        min_x, max_x, min_y, max_y = strokes.boundary_box
         stroke_center = [np.average([min_x, max_x]),
                          np.average([min_y, max_y])]
 
@@ -220,7 +255,7 @@ class NormalizeStroke(object):
         maxima = maxima[rectify(maxima)[:, 1] > 0]
         rectify = get_normalization_func(minima, maxima)
 
-        strokes = [rectify(s) for s in strokes]
+        strokes = Ink([rectify(s) for s in strokes])
         minima = rectify(minima)
         maxima = rectify(maxima)
 
@@ -264,8 +299,7 @@ class NormalizeStroke(object):
             intersections with line between base and mean line
 
         Args:
-            strokes (nested list of float[L,2]): (x,y)-points for each point in
-                each stroke in each strokes
+            strokes (Ink): ink to normalize
         """
         intersections = 0
         for stroke in strokes:
@@ -273,12 +307,11 @@ class NormalizeStroke(object):
             is_below_merged = [x for x, _ in groupby(is_below)]
             intersections += len(is_below_merged) - 1
 
-        min_x, max_x, _, _ = boundary_box(strokes)
+        min_x, max_x, _, _ = strokes.boundary_box
         width = max_x - min_x
         scale_width = intersections / (2 * width) if width else 1
-        return [np.column_stack([stroke[:, 0] * scale_width,
-                                 stroke[:, 1]])
-                for stroke in strokes]
+        return Ink([np.column_stack([stroke[:, 0] * scale_width, stroke[:, 1]])
+                    for stroke in strokes])
 
 
 class StrokeFeatures(NormalizeStroke):
@@ -290,10 +323,10 @@ class StrokeFeatures(NormalizeStroke):
     RDP_EPSILON = 0.02
 
     def __init__(self, strokes, normalize_first=True):
-        """
+        """ Provide a list of features characterizing the set of strokes
+
         Args:
-            strokes (list of float[L,2]): (x,y)-points for each point in
-                each stroke in strokes
+            strokes (Ink): ink to normalize
         """
 
         if normalize_first:
@@ -771,8 +804,7 @@ def main():
     from handwritten_vector_graphic import load
     ink_page, transcriptions = load("sample_text/the_zen_of_python.svg",
                                     "sample_text/the_zen_of_python.txt")
-    ink_lines = split_lines(ink_page)
-    ink = ink_lines[0]
+    ink = ink_page.lines[0]
     strokes_features = StrokeFeatures(ink, normalize_first=True)
     strokes_features.plot_normalization()
     strokes_features.plot_all()
