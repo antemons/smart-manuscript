@@ -10,7 +10,7 @@ It recognizes on-line handwriting (generated e.g. by smart pens) and can not rea
 
  1. Install [Tensorflow](https://www.tensorflow.org/get_started/os_setup) >= 0.12.0
 
- 2. Install numpy, scipy, pylab, svgpathtools, svgwrite
+ 2. Install python-modules numpy, scipy, pylab, svgpathtools, svgwrite, PyPDF2 and install pdftocairo
 
  3. Optional: train the graph (or use the one in sample_graph)
 
