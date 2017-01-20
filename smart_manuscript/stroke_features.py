@@ -346,8 +346,8 @@ class StrokeFeatures(NormalizeStroke):
         # proceding stroke ended:
         for i in list(range(len(strokes)-1))[::-1]:
             if all(strokes[i][-1] == strokes[i+1][0]):
-                strokes[i:i+1] = np.concatenate([strokes[i][:-1],
-                                                 strokes[i+1]])
+                strokes[i] = np.concatenate([strokes[i][:-1], strokes[i+1]])
+                strokes.pop(i+1)
         return strokes
 
     @lazyprop
@@ -802,9 +802,17 @@ class StrokeFeatures(NormalizeStroke):
 
 def main():
     from handwritten_vector_graphic import load
-    ink_page, transcriptions = load("sample_text/the_zen_of_python.svg",
-                                    "sample_text/the_zen_of_python.txt")
-    ink = ink_page.lines[0]
+    from tensorflow.python.platform.app import flags
+    FLAGS = flags.FLAGS
+    flags.DEFINE_string(
+        "file", "sample_text/The_Zen_of_Python.pdf",
+        "file to show features (either PDF or SVG)")
+    flags.DEFINE_integer(
+        "line_num", 0,
+        "select line number")
+
+    ink_page = load(FLAGS.file)
+    ink = ink_page.lines[FLAGS.line_num]
     strokes_features = StrokeFeatures(ink, normalize_first=True)
     strokes_features.plot_normalization()
     strokes_features.plot_all()
