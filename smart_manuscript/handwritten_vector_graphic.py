@@ -23,10 +23,11 @@
 from xml.dom import minidom
 import pylab as plt
 import numpy as np
-from svgpathtools import parse_path
+from svgpathtools import svg2paths
 from stroke_features import Ink
 from os.path import basename
 import subprocess
+import re
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
@@ -72,6 +73,18 @@ def plot_strokes(strokes, lines=None):
     plt.show()
 
 
+def _transform(stroke, matrix):
+    """ transform the strokes according to a (svg-)matrix
+
+    Args:
+        stroke (float[_, 2]): get transformed column-wise
+        matrix (float[6]): transformation matrix
+    """
+    stroke_e = np.ones([len(stroke), 3])
+    stroke_e[:, :2] = stroke
+    return np.dot(stroke_e, np.array(matrix).reshape(3, 2))
+
+
 def _read_svg(filename, is_handwritten=None):
     """ Read all strokes from the svg file and save it together with the index
 
@@ -88,34 +101,40 @@ def _read_svg(filename, is_handwritten=None):
     """
 
     def is_black(path):
-        return any(color in path.getAttribute("style")
+        return any("style" in path and color in path["style"]
                    for color in [r"rgb(0%,0%,0%)", r"#000000"])
 
     if is_handwritten is None:
         is_handwritten = is_black
 
-    svg_dom = minidom.parse(filename)
-
     def remove_unit(string):
-        return ''.join([x for x in string if x.isdigit()])
+        unit = re.findall("[a-z]+", string)[-1]
+        return string.replace(unit, "")
+
+    svg_dom = minidom.parse(filename)
     element = svg_dom.getElementsByTagName('svg')[0]
     WIDTH = int(remove_unit(element.getAttribute("width")))
     HEIGHT = int(remove_unit(element.getAttribute("height")))
-
-    path_strings = (
-        path.getAttribute('d')
-        for path in svg_dom.getElementsByTagName('path')
-        if is_handwritten(path))
+    svg_dom.unlink()
 
     strokes = Ink([], page_size=(WIDTH, HEIGHT))
-    for path_string in path_strings:
-        path = parse_path(path_string)
+    paths, properties = svg2paths(filename)
+    for path, property_ in zip(paths, properties):
+        if not is_handwritten(property_):
+            continue
         polynomials = [segment.poly() for segment in path]
         t = np.linspace(0, 1, 10)
         polygon = np.concatenate([segment(t) for segment in polynomials])
         stroke = np.array([polygon.real, polygon.imag]).transpose()
+        m = np.array([[1,  0], [0, -1]])
+        if "transform" in property_:
+            transform = property_["transform"]
+            if "matrix" in transform:
+                parameters_str = re.findall("matrix\((.+)\)", transform)[0]
+                parameters = [float(p) for p in parameters_str.split(",")]
+                stroke = _transform(stroke, parameters)
+        stroke = _transform(stroke, [1, 0, 0, -1, 0, HEIGHT])
         strokes.append(stroke)
-    svg_dom.unlink()
 
     return strokes
 
