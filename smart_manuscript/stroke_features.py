@@ -25,6 +25,7 @@ import pylab as plt
 from itertools import groupby, accumulate
 from scipy import interpolate
 from scipy.signal import argrelextrema
+from scipy.optimize import minimize
 from copy import deepcopy
 from utils import Transformation, cached_property
 
@@ -50,7 +51,7 @@ class Ink(object):
         self.strokes = np.split(self._concatenated_strokes, sections)
 
     def __deepcopy__(self, _):
-        return self.__class__(self.strokes)
+        return self.__class__(self.strokes)  # connect_gaps and remove duplicated redundant
 
     def __iter__(self):
         return self.strokes.__iter__()
@@ -86,6 +87,16 @@ class Ink(object):
                 max(self._concatenated_strokes[:, 0]),
                 min(self._concatenated_strokes[:, 1]),
                 max(self._concatenated_strokes[:, 1]))
+
+    @property
+    def length(self):
+        def stroke_length(stroke):
+            x = stroke[:, 0]
+            y = stroke[:, 1]
+            dist = np.sqrt((x[:-1] - x[1:])**2 + (y[:-1] - y[1:])**2)
+            return sum(dist)
+
+        return sum(stroke_length(stroke) for stroke in self)
 
     def transform(self, transformation):
         self.concatenated_strokes = transformation * self.concatenated_strokes
@@ -159,6 +170,10 @@ class InkNormalization(object):
         axes[4].plot(self.__strokes_width.boundary_box[:2], [1, 1], 'k:')
         plt.show()
 
+    def _transform(self, transformation):
+        self._transformation = transformation * self._transformation
+        self.ink.transform(transformation)
+
     @staticmethod
     def _plot_strokes(strokes, description, axes=None):
         """ plot current state of normalization
@@ -187,25 +202,28 @@ class InkNormalization(object):
                            Transformation.translation(0, -b))
         #transformation = (Transformation.shear(y_angle=-np.arctan(a)) *
         #                  Transformation.translation(0, -b))
-        self._transformation = transformation * self._transformation
-        self.ink.transform(transformation)
+        self._transform(transformation)
 
     def normalize_left(self):
         """ set the leftmost point to x = 0
         """
         min_x = self.ink.boundary_box[0]
         transformation = Transformation.translation(- min_x, 0)
-        self._transformation = transformation * self._transformation
-        self.ink.transform(transformation)
+        self._transform(transformation)
 
     def normalize_slant(self):
-        # TODO(daniel): implement shortest spline method
-        """ normalize the slant (not implemented yet)
-
-        Args:
-            strokes (Ink): ink to normalize
+        """ normalize the slant
         """
-        pass
+
+        def tilted_ink_length(angle):
+            ink = deepcopy(self.ink)
+            ink.transform(Transformation.shear(y_angle=angle))
+            return ink.length
+
+        angle = minimize(tilted_ink_length, 0).x
+        transformation = Transformation.shear(y_angle=angle)
+        self._transform(transformation)
+
 
     def normalize_baseline(self):
         """ normalize baseline to y = 0 and mean line / height to y = 1
@@ -253,8 +271,7 @@ class InkNormalization(object):
         else:
             transformation = Transformation.translation(0, - BASELINE + .5)
 
-        self.ink.transform(transformation)
-        self._transformation = transformation * self._transformation
+        self._transform(transformation)
 
         self.__minima = transformation * minima
         self.__maxima = transformation * maxima
@@ -280,8 +297,7 @@ class InkNormalization(object):
         width = max_x - min_x
         scale_width = intersections / (2 * width) if width else 1
         transformation = Transformation.scale((scale_width, 1))
-        self._transformation = transformation * self._transformation
-        self.ink.transform(transformation)
+        self._transform(transformation)
 
 
 class InkFeatures(object):
@@ -778,7 +794,7 @@ def main():
     ink = ink_page.lines[FLAGS.line_num]
     normalized = InkNormalization(ink)
     normalized.plot()
-    strokes_features = InkFeatures(normalized.ink, normalize=True)
+    strokes_features = InkFeatures(normalized.ink, normalize=False)
     strokes_features.plot_all()
 
 if __name__ == "__main__":
