@@ -46,12 +46,22 @@ class Ink(object):
         # TODO(dv): remove already here the dublicated points
         # strokes = self._remove_dublicate_points(strokes)
         self._connect_gapless_strokes(strokes)
-        self._concatenated_strokes = np.concatenate(strokes)
-        sections = np.cumsum([len(s) for s in strokes])[:-1]
-        self.strokes = np.split(self._concatenated_strokes, sections)
+        if strokes:
+            self._concatenated_strokes = np.concatenate(strokes)
+            sections = np.cumsum([len(s) for s in strokes])[:-1]
+            self.strokes = np.split(self._concatenated_strokes, sections)
+        else:
+            self._concatenated_strokes = np.array([])
+            self.strokes = []
 
     def __deepcopy__(self, _):
         return self.__class__(self.strokes)  # connect_gaps and remove duplicated redundant
+
+    def __getstate__(self):
+        return self.strokes
+
+    def __setstate__(self, strokes):
+        self.__init__(strokes)
 
     def __iter__(self):
         return self.strokes.__iter__()

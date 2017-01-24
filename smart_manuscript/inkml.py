@@ -25,6 +25,7 @@ import numpy as np
 import pylab as plt
 import pickle
 from tensorflow.python.platform.app import flags
+from stroke_features import Ink
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
@@ -191,9 +192,9 @@ def read_inkml_file(filename):
     else:
         assert False
 
-    words = [(transcription, _rotate(strokes, rot_angle))
+    words = [(transcription, Ink(_rotate(strokes, rot_angle)))
              for transcription, strokes in words]
-    textlines = [(transcription, _rotate(strokes, rot_angle))
+    textlines = [(transcription, Ink(_rotate(strokes, rot_angle)))
                  for transcription, strokes in textlines]
 
     return words, textlines
