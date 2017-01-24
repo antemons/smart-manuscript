@@ -24,10 +24,11 @@ from xml.dom import minidom
 import pylab as plt
 import numpy as np
 from svgpathtools import svg2paths
-from stroke_features import Ink
+from stroke_features import InkPage
 from os.path import basename
 import subprocess
 import re
+from utils import Transformation
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
@@ -63,26 +64,16 @@ def load(filename, transcription_file=None):
         return strokes, transcription
 
 
-def plot_strokes(strokes, lines=None):
+def plot_page(ink, lines=None):
     if lines is not None:
         for line in lines:
             print(line)
-    for stroke in strokes:
+    for stroke in ink:
         plt.plot(stroke[:, 0], stroke[:, 1], '-')
     plt.axes().set_aspect('equal')
+    plt.axes().set_xlim([0, ink.page_size[0]])
+    plt.axes().set_ylim([0, ink.page_size[1]])
     plt.show()
-
-
-def _transform(stroke, matrix):
-    """ transform the strokes according to a (svg-)matrix
-
-    Args:
-        stroke (float[_, 2]): get transformed column-wise
-        matrix (float[6]): transformation matrix
-    """
-    stroke_e = np.ones([len(stroke), 3])
-    stroke_e[:, :2] = stroke
-    return np.dot(stroke_e, np.array(matrix).reshape(3, 2))
 
 
 def _read_svg(filename, is_handwritten=None):
@@ -117,7 +108,7 @@ def _read_svg(filename, is_handwritten=None):
     HEIGHT = int(remove_unit(element.getAttribute("height")))
     svg_dom.unlink()
 
-    strokes = Ink([], page_size=(WIDTH, HEIGHT))
+    strokes = []
     paths, properties = svg2paths(filename)
     for path, property_ in zip(paths, properties):
         if not is_handwritten(property_):
@@ -126,17 +117,17 @@ def _read_svg(filename, is_handwritten=None):
         t = np.linspace(0, 1, 10)
         polygon = np.concatenate([segment(t) for segment in polynomials])
         stroke = np.array([polygon.real, polygon.imag]).transpose()
-        m = np.array([[1,  0], [0, -1]])
         if "transform" in property_:
             transform = property_["transform"]
             if "matrix" in transform:
                 parameters_str = re.findall("matrix\((.+)\)", transform)[0]
-                parameters = [float(p) for p in parameters_str.split(",")]
-                stroke = _transform(stroke, parameters)
-        stroke = _transform(stroke, [1, 0, 0, -1, 0, HEIGHT])
+                parameters = np.array(
+                    [float(p) for p in parameters_str.split(",")])
+                stroke = Transformation(parameters[[0, 1, 4, 2, 3, 5]]) * stroke
+        stroke = Transformation([1, 0, 0, 0, -1, HEIGHT]) * stroke
         strokes.append(stroke)
+    return InkPage(strokes, page_size=(WIDTH, HEIGHT))
 
-    return strokes
 
 
 def _read_txt(txt_file):
@@ -162,9 +153,13 @@ def _read_pdf(filename, is_handwritten=None):
 
 def main():
     """ show sample handwritten notes """
-    ink, text = load("sample_text/the_zen_of_python.svg",
-                     "sample_text/the_zen_of_python.txt")
-    plot_strokes(ink, text)
+    from tensorflow.python.platform.app import flags
+    FLAGS = flags.FLAGS
+    flags.DEFINE_string(
+        "file", "sample_text/The_Zen_of_Python.pdf",
+        "file to show features (either PDF or SVG)")
+    ink = load(FLAGS.file)
+    plot_page(ink)
 
 
 if __name__ == "__main__":

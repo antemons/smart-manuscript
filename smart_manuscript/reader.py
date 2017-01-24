@@ -23,7 +23,7 @@
 import pickle
 import tensorflow as tf
 from tensorflow.python.ops.ctc_ops import ctc_beam_search_decoder
-import stroke_features as sf
+from stroke_features import InkFeatures
 import numpy as np
 from os import path
 
@@ -70,7 +70,7 @@ class GraphUtilities(object):
         max_input_len = max(len(f) for f in features)
         batch_size = len(features)
         input_ = np.zeros([batch_size, max_input_len,
-                           sf.StrokeFeatures.NUM_FEATURES])
+                           InkFeatures.NUM_FEATURES])
         input_seq_length = np.zeros([batch_size], int)
         for i, f in enumerate(features):
             input_[i, :len(f)] = f
@@ -131,7 +131,7 @@ class Reader(GraphUtilities):
             ink (nested list of arrays[N,2]): the trajectories
         """
 
-        features = sf.StrokeFeatures(ink).features
+        features = InkFeatures(ink).features
         feed_dict = self.convert_to_tf([features])
 
         beam_search = ctc_beam_search_decoder(
@@ -156,7 +156,7 @@ class Reader(GraphUtilities):
             output_states = self.session.run(
                 [self.output_states], feed_dict=feed_dict)
             lstm_c = [output_states[0][i][20] for i in range(len(features))]
-            sf.StrokeFeatures(ink).plot(data=lstm_c)
+            InkFeatures(ink).plot(data=lstm_c)
         return [self.labels_to_str(p.values) for p in predictions]
 
     def recognize_page(

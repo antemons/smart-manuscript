@@ -21,9 +21,10 @@
 """
 
 import numpy as np
-from cairo import PDFSurface, Context
+from cairo import PDFSurface, Context, Matrix
 from reader import Reader
 from handwritten_vector_graphic import load as load_file
+from stroke_features import InkNormalization, Transformation
 from tensorflow.python.platform.app import flags
 from PyPDF2 import PdfFileWriter, PdfFileReader
 import tempfile
@@ -47,19 +48,20 @@ class SearchablePDF(Reader):
     def _generate_layer(self, transcription, ink, layer):
         surface = PDFSurface(layer, *ink.page_size)
         context = Context(surface)
-        context.select_font_face('Sans')
-        avg_writing_height = np.average([
-            l.boundary_box[3] - l.boundary_box[2] for l in ink.lines])
-        TEXT_HEIGHT = avg_writing_height/2
-        context.set_font_size(TEXT_HEIGHT)
+        # context.select_font_face('Georgia')
         context.set_source_rgba(1, 1, 1, 1/256)  # almost invisible
+        context.set_font_size(2)
         for line_ink, line_transcription in zip(ink.lines, transcription):
-            TEXT_WIDTH = context.text_extents(line_transcription)[2]
+            norm_ink = InkNormalization(line_ink)
             context.save()
-            boundary_box = line_ink.boundary_box
-            context.move_to(boundary_box[0],
-                            ink.page_size[1] - boundary_box[3] + TEXT_HEIGHT)
-            context.scale((boundary_box[1]-boundary_box[0])/TEXT_WIDTH, 1)
+            context.transform(Matrix(*(Transformation.translation(0, ink.page_size[1]).parameter)))
+            context.transform(Matrix(*(Transformation.mirror(0).parameter)))
+            context.transform(Matrix(*((~norm_ink._transformation).parameter)))
+            context.transform(Matrix(*(Transformation.mirror(0).parameter)))
+            HANDWRITING_WIDTH = norm_ink.ink.boundary_box[1]
+            TYPEWRITING_WIDTH = context.text_extents(line_transcription)[2]
+            context.scale(HANDWRITING_WIDTH/TYPEWRITING_WIDTH, 1)
+            context.move_to(0, 0)
             context.show_text(line_transcription)
             context.restore()
         context.stroke()
@@ -86,9 +88,6 @@ class SearchablePDF(Reader):
             self._generate_layer(
                 transcription, ink=ink, layer=transcription_layer)
             self._add_layer_to_pdf(input_pdf, transcription_layer, output_pdf)
-
-
-
 
 
 def main():

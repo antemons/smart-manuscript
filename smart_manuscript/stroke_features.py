@@ -23,111 +23,140 @@
 import numpy as np
 import pylab as plt
 from itertools import groupby, accumulate
-from scipy import optimize, interpolate
+from scipy import interpolate
 from scipy.signal import argrelextrema
+from copy import deepcopy
+from utils import Transformation, cached_property
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
 
 
-def lazyprop(function):
-    """ decorator to strore the results of a method
-    """
-    attr_name = '_lazy_' + function.__name__
-
-    @property
-    def _lazyprop(self):
-        if not hasattr(self, attr_name):
-            setattr(self, attr_name, function(self))
-        return getattr(self, attr_name)
-    return _lazyprop
-
-
-class Ink(list):
+class Ink(object):
     """ Set of strokes
 
         nested list strokes (float[L,2]), the (x,y)-points for each point in
         each stroke in each strokes
     """
 
-    def __init__(self, strokes, page_size=None, min_seperation=None):
+    def __init__(self, strokes):
+        strokes = deepcopy(strokes)
+        # TODO(dv): remove already here the dublicated points
+        # strokes = self._remove_dublicate_points(strokes)
+        self._connect_gapless_strokes(strokes)
+        self._concatenated_strokes = np.concatenate(strokes)
+        sections = np.cumsum([len(s) for s in strokes])[:-1]
+        self.strokes = np.split(self._concatenated_strokes, sections)
+
+    def __deepcopy__(self, _):
+        return self.__class__(self.strokes)
+
+    def __iter__(self):
+        return self.strokes.__iter__()
+
+    @property
+    def concatenated_strokes(self):
+        return self._concatenated_strokes
+
+    @concatenated_strokes.setter
+    def concatenated_strokes(self, value):
+        self._concatenated_strokes[:] = value
+
+    @staticmethod
+    def _remove_dublicate_points(strokes):
+        def remove_dublicates_from_stroke(stroke):
+            return np.array([x for x, _ in groupby(stroke, tuple)])
+        return [remove_dublicates_from_stroke(stroke)
+                for stroke in strokes]
+
+    @staticmethod
+    def _connect_gapless_strokes(strokes):
+        """ connect strokes in the the consecutive stroke starts where the
+            proceding stroke ended
+        """
+        for i in list(range(len(strokes)-1))[::-1]:
+            if all(strokes[i][-1] == strokes[i+1][0]):
+                strokes[i] = np.concatenate([strokes[i][:-1], strokes[i+1]])
+                strokes.pop(i+1)
+
+    @property
+    def boundary_box(self):
+        return (min(self._concatenated_strokes[:, 0]),
+                max(self._concatenated_strokes[:, 0]),
+                min(self._concatenated_strokes[:, 1]),
+                max(self._concatenated_strokes[:, 1]))
+
+    def transform(self, transformation):
+        self.concatenated_strokes = transformation * self.concatenated_strokes
+
+
+class InkPage(Ink):
+    """ Ink on a page """
+
+    def __init__(self, strokes, page_size=None):
         super().__init__(strokes)
         self.page_size = page_size
-        self.min_seperation = min_seperation
 
-    @lazyprop
-    def boundary_box(self):
-        connected_strokes = np.concatenate(self)
-        return (min(connected_strokes[:, 0]), max(connected_strokes[:, 0]),
-                min(connected_strokes[:, 1]), max(connected_strokes[:, 1]))
+    def __deepcopy__(self, _):
+        return self.__class__(self.strokes, page_size=self.page_size)
 
-    @lazyprop
-    def lines(self):
+    @property
+    def lines(self, min_seperation=None):
         """ split the ink in several lines
         """
         lines = []
         min_x, max_x, _, _ = self.boundary_box
-        if self.min_seperation is None:
-            self.min_seperation = (max_x - min_x)/10
+        if min_seperation is None:
+            min_seperation = (max_x - min_x)/10
         for stroke in self:
-            if (not len(lines) or
-                (lines[-1][-1][-1, 0] - self.min_seperation > stroke[0, 0])):
-                lines.append(Ink([]))
+            if (not len(lines) or (lines[-1][-1][-1, 0] -
+                                   min_seperation > stroke[0, 0])):
+                lines.append([])
             lines[-1].append(stroke)
-        return lines
-
-#TODO(dv): remove this function and replace with the Ink methods
-# def boundary_box(strokes):
-#     try:
-#         connected_strokes = np.concatenate(strokes)
-#     except:
-#         print(strokes)
-#         raise
-#     return (min(connected_strokes[:, 0]), max(connected_strokes[:, 0]),
-#             min(connected_strokes[:, 1]), max(connected_strokes[:, 1]))
-
-#TODO(dv): remove this function and replace with the Ink methods
-# def split_lines(ink_of_page, min_seperation=None):
-#     """ split the ink in several lines
-#     """
-#     ink_of_lines = []
-#     min_x, max_x, _, _ = boundary_box(ink_of_page)
-#     if min_seperation is None:
-#         min_seperation = (max_x - min_x)/10
-#     for stroke in ink_of_page:
-#         if (not len(ink_of_lines) or
-#                 ink_of_lines[-1][-1][-1, 0] - min_seperation > stroke[0, 0]):
-#             ink_of_lines.append([])
-#         ink_of_lines[-1].append(stroke)
-#     return ink_of_lines
+        return [Ink(line) for line in lines]
 
 
-
-
-
-class NormalizeStroke(object):
+class InkNormalization(object):
     """ normalize a stroke by slant, skew, baseline, height, and width
     """
 
-    def __init__(self, strokes):
-        strokes = Ink(strokes)
-        self.__strokes_skew = self.normalize_skew(strokes)
-        self.__strokes_slant = self.normalize_slant(self.__strokes_skew)
-        self.__strokes_baseline, self.__minima, self.__maxima = \
-            self.normalize_baseline(self.__strokes_slant)
-        self.__strokes_width = self.normalize_width(self.__strokes_baseline)
-        self._strokes = self.__strokes_width
+    def __init__(self, ink):
+        self.ink = deepcopy(ink)
+        self._transformation = Transformation.identity()
+        self.__strokes_orig = deepcopy(self.ink)
+        self.normalize_skew()
+        self.__strokes_skew = deepcopy(self.ink)
+        self.normalize_slant()
+        self.__strokes_slant = deepcopy(self.ink)
+        self.normalize_baseline()
+        self.__strokes_baseline = deepcopy(self.ink)
+        self.normalize_width()
+        self.normalize_left()
+        self.__strokes_width = deepcopy(self.ink)
 
-    def plot_normalization(self):
-        _, axes = plt.subplots(4)
-        self._plot_strokes(self.__strokes_skew, "normalize skew", axes[0])
-        self._plot_strokes(self.__strokes_slant, "normalize slant", axes[1])
+    def plot(self):
+        _, axes = plt.subplots(5)
+        self._plot_strokes(self.__strokes_orig, "original", axes[0])
+        width = self.ink.boundary_box[1]
+        box = np.array([[0,0], [width, 0], [width, 1], [0, 1]])
+        axes[0].scatter(*((~self._transformation) * box).transpose())
+
+        self._plot_strokes(self.__strokes_skew, "normalize skew", axes[1])
+        axes[1].plot(self.__strokes_skew.boundary_box[:2], [0, 0], 'k:')
+
+        self._plot_strokes(self.__strokes_slant, "normalize slant", axes[2])
+
         self._plot_strokes(
-            self.__strokes_baseline, "normalize baseline", axes[2])
-        axes[2].scatter(*self.__minima.transpose(), c='b', edgecolors='face')
-        axes[2].scatter(*self.__maxima.transpose(), c='r', edgecolors='face')
-        self._plot_strokes(self.__strokes_width, "normalize width", axes[3])
+            self.__strokes_baseline, "normalize baseline", axes[3])
+        axes[3].scatter(*self.__minima.transpose(), c='b', edgecolors='face')
+        axes[3].scatter(*self.__maxima.transpose(), c='r', edgecolors='face')
+        axes[3].plot(self.__strokes_baseline.boundary_box[:2], [0, 0], 'k:')
+        axes[3].plot(self.__strokes_baseline.boundary_box[:2], [1, 1], 'k:')
+
+        self._plot_strokes(self.__strokes_width, "normalize width", axes[4])
+        axes[4].plot(self.__strokes_width.boundary_box[:2], [0, 0], 'k:')
+        axes[4].plot(self.__strokes_width.boundary_box[:2], [1, 1], 'k:')
         plt.show()
 
     @staticmethod
@@ -143,49 +172,43 @@ class NormalizeStroke(object):
             for stroke in strokes:
                 axes.plot(stroke[:, 0], stroke[:, 1], 'g-')
             axes.set_aspect('equal')
-            min_x, max_x, min_y, max_y = strokes.boundary_box
-            axes.plot([min_x, max_x], [0, 0], 'k:')
-            axes.plot([min_x, max_x], [1, 1], 'k:')
-            axes.set_xlim([min_x, max_x])
-            axes.set_ylim([min_y, max_y])
 
-    @staticmethod
-    def normalize_skew(strokes):
+    def normalize_skew(self):
         """ normalize skew by an linear fit
 
         Args:
             strokes (Ink): ink to normalize
         """
         # TODO: only if long enough
-        connected_strokes = np.concatenate(strokes)
-        a, b = np.polyfit(connected_strokes[:, 0], connected_strokes[:, 1], 1)
-        return Ink([np.column_stack([stroke[:, 0],
-                                 stroke[:, 1] - (a * stroke[:, 0] + b)])
-                    for stroke in strokes])
 
-    @staticmethod
-    def normalize_slant(strokes):
-        # TODO(daniel): does nothing at the moment
+        a, b = np.polyfit(self.ink.concatenated_strokes[:, 0],
+                          self.ink.concatenated_strokes[:, 1], 1)
+        transformation = (Transformation.rotation(- np.arctan(a)) *
+                           Transformation.translation(0, -b))
+        #transformation = (Transformation.shear(y_angle=-np.arctan(a)) *
+        #                  Transformation.translation(0, -b))
+        self._transformation = transformation * self._transformation
+        self.ink.transform(transformation)
+
+    def normalize_left(self):
+        """ set the leftmost point to x = 0
+        """
+        min_x = self.ink.boundary_box[0]
+        transformation = Transformation.translation(- min_x, 0)
+        self._transformation = transformation * self._transformation
+        self.ink.transform(transformation)
+
+    def normalize_slant(self):
+        # TODO(daniel): implement shortest spline method
         """ normalize the slant (not implemented yet)
 
         Args:
             strokes (Ink): ink to normalize
         """
-        # alphas = []
-        # for stroke in strokes:
-        #     delta = stroke[1:] - stroke[:-1]
-        #     alphas += (np.arctan2(delta[:, 1], delta[:, 0]) % (np.pi)).tolist()
-        # alphas = np.array(alphas)
-        # alphas = (alphas + np.pi/2) % np.pi - np.pi/2
-        # alphas = alphas[np.abs(alphas) < 0.2]
-        return strokes
-        # print(np.average(alphas))
-        # plt.hist(alphas.tolist(),10)
-        # plt.show()
+        pass
 
-    @staticmethod
-    def normalize_baseline(strokes):
-        """ normalize baseline to height zero and mean line to one
+    def normalize_baseline(self):
+        """ normalize baseline to y = 0 and mean line / height to y = 1
 
         Fits the local minima (maxima) to the baseline (mean line), resp.
 
@@ -195,9 +218,9 @@ class NormalizeStroke(object):
 
         minima = []
         maxima = []
-        for stroke in strokes:
+        for stroke in self.ink:
             # TODO(dv): avoid several consecutives extrema
-            # (e.g. when maximum is divide)
+            #           (e.g. when maximum is divide)
             idx_min = argrelextrema(stroke[:, 1], np.less_equal)[0]
             idx_max = argrelextrema(stroke[:, 1], np.greater_equal)[0]
             if len(stroke) == 1:
@@ -217,84 +240,26 @@ class NormalizeStroke(object):
         minima, maxima = np.array(minima), np.array(maxima)
         assert (minima.size and maxima.size)
 
-        min_x, max_x, min_y, max_y = strokes.boundary_box
-        stroke_center = [np.average([min_x, max_x]),
-                         np.average([min_y, max_y])]
+        BASELINE = np.average(minima[:, 1])
+        MEANLINE = np.average(maxima[:, 1])
+        if MEANLINE > BASELINE:
+            minima = minima[minima[:, 1] < MEANLINE]
+            maxima = maxima[maxima[:, 1] > BASELINE]
+            BASELINE = np.average(minima[:, 1])
+            MEANLINE = np.average(maxima[:, 1])
+            HEIGHT = MEANLINE - BASELINE
+            transformation = (Transformation.scale(1 / HEIGHT) *
+                              Transformation.translation(0, - BASELINE))
+        else:
+            transformation = Transformation.translation(0, - BASELINE + .5)
 
-        def get_normalization_func(minima, maxima):
-            def fit_func(_, height): return height
-            if np.average(maxima[:, 1]) > np.average(minima[:, 1]):
-                # make only height detection since linear regression
-                # is already done by normalize_skew
-                fit_param_0 = np.array([0, 1])
+        self.ink.transform(transformation)
+        self._transformation = transformation * self._transformation
 
-                def error_func(fit_param, x1, y1, x2, y2):
-                    return np.r_[
-                        fit_func(x1, fit_param[0]) - y1,
-                        fit_func(x2, fit_param[1]) - y2]
-                fit_param, _ = optimize.leastsq(
-                    error_func, fit_param_0,
-                    args=(
-                        minima[:, 0], minima[:, 1],
-                        maxima[:, 0], maxima[:, 1]))
-            else:
-                fit_param = [stroke_center[1] - 0.5, stroke_center[1] + 0.5]
-                # TODO(dv): change to standart height
+        self.__minima = transformation * minima
+        self.__maxima = transformation * maxima
 
-            def rectify(points):
-                height = fit_param[1]-fit_param[0]
-                ret = np.zeros_like(points)
-                ret[:, 0] = points[:, 0]/height
-                ret[:, 1] = (points[:, 1] -
-                             fit_func(points[:, 0], fit_param[0]))/height
-                return ret
-            return rectify
-
-        rectify = get_normalization_func(minima, maxima)
-        minima = minima[rectify(minima)[:, 1] < 1]
-        maxima = maxima[rectify(maxima)[:, 1] > 0]
-        rectify = get_normalization_func(minima, maxima)
-
-        strokes = Ink([rectify(s) for s in strokes])
-        minima = rectify(minima)
-        maxima = rectify(maxima)
-
-        # def gaussian(x, x_0, sigma):
-        #      return np.exp( - (x - x_0)**2 / (2 * sigma)**2 )
-        # #def gaus_fit(x, x_0, sigma, )
-        # gaus_param_0 = np.array([0, stroke_center[0]])
-        # def error_func(param, minima, maxima):
-        #     return  np.r_[
-        #         gaussian(minima[:,0], *param) - minima[:,1],
-        #         gaussian(maxima[:,0], *param) - maxima[:,1] - 1]
-        # gaus_param, success = optimize.leastsq(
-        #     error_func, gaus_param_0, args=(minima,maxima))
-        # print(gaus_param)
-        # def normalize_wih_gaussian(points):
-        #     return (points
-        #         - np.outer(gaussian(points[:,0], *gaus_param),np.array([0,1])))
-        #
-        # self.strokes = [normalize_wih_gaussian(s) for s in self.strokes]
-        # minima = normalize_wih_gaussian(minima)
-        # maxima = normalize_wih_gaussian(maxima)
-
-        #
-        # def smooth(points):
-        #     ret = points.copy()
-        #     for min_ in minima:
-        #         print(min_)
-        #         ret[:,1] += - max(0, min_[1])*gaussian(points[:,0], min_[0], 2)/1
-        #     for max_ in maxima:
-        #         print(min_)
-        #         ret[:,1] += max(0,-max_[1]+1)*gaussian(points[:,0], max_[0], 2)/1
-        #     return ret
-        #
-        # self.strokes = [smooth(s) for s in self.strokes]
-
-        return strokes, minima, maxima
-
-    @staticmethod
-    def normalize_width(strokes):
+    def normalize_width(self):
         """ normalize the width by using the average width between two
             intersections with line between base and mean line
 
@@ -302,19 +267,24 @@ class NormalizeStroke(object):
             strokes (Ink): ink to normalize
         """
         intersections = 0
-        for stroke in strokes:
+        for stroke in self.ink:
             is_below = stroke[:, 1] < 0.5
             is_below_merged = [x for x, _ in groupby(is_below)]
             intersections += len(is_below_merged) - 1
 
-        min_x, max_x, _, _ = strokes.boundary_box
+        # TODO(dv): replace definition before training next graph
+        # is_below = strokes.concatenated_strokes[:, 1] < 0.5
+        # intersections = len([x for x, _ in groupby(is_below)])
+
+        min_x, max_x, _, _ = self.ink.boundary_box
         width = max_x - min_x
         scale_width = intersections / (2 * width) if width else 1
-        return Ink([np.column_stack([stroke[:, 0] * scale_width, stroke[:, 1]])
-                    for stroke in strokes])
+        transformation = Transformation.scale((scale_width, 1))
+        self._transformation = transformation * self._transformation
+        self.ink.transform(transformation)
 
 
-class StrokeFeatures(NormalizeStroke):
+class InkFeatures(object):
     """ Generates features of a given stroke
     """
 
@@ -322,39 +292,32 @@ class StrokeFeatures(NormalizeStroke):
     DOTS_PER_UNIT = 5
     RDP_EPSILON = 0.02
 
-    def __init__(self, strokes, normalize_first=True):
+    def __init__(self, strokes, normalize=True):
         """ Provide a list of features characterizing the set of strokes
 
         Args:
             strokes (Ink): ink to normalize
         """
+        if normalize:
+            strokes = InkNormalization(strokes).ink
+        # strokes = deepcopy(strokes)
+        #self.ink = strokes
+        self.ink = self._remove_dublicate_points(strokes)
 
-        if normalize_first:
-            super().__init__(strokes)
-        else:
-            self._strokes = strokes
-
-        self._strokes = self._remove_dublicate_points(self._strokes)
-
+    # TODO(daniel): move to Ink
     @staticmethod
     def _remove_dublicate_points(strokes):
         def remove_dublicate_from_stroke(stroke):
             return np.array([x for x, _ in groupby(stroke, tuple)])
         strokes = [remove_dublicate_from_stroke(stroke) for stroke in strokes]
-
-        # connect strokes in the the consecutive stroke starts where the
-        # proceding stroke ended:
-        for i in list(range(len(strokes)-1))[::-1]:
-            if all(strokes[i][-1] == strokes[i+1][0]):
-                strokes[i] = np.concatenate([strokes[i][:-1], strokes[i+1]])
-                strokes.pop(i+1)
         return strokes
 
-    @lazyprop
-    def _splines(self):
-        return [self._create_spline(stroke) for stroke in self._strokes]
 
-    @lazyprop
+    @cached_property
+    def _splines(self):
+        return [self._create_spline(stroke) for stroke in self.ink]
+
+    @cached_property
     def _knots(self):
         return [self._get_knots(spline) for spline in self._splines]
 
@@ -440,7 +403,7 @@ class StrokeFeatures(NormalizeStroke):
     def _plot_orig_strokes(self, axes):
         axes.set_aspect('equal')
         axes.set_title("orig_strokes")
-        for stroke in self._strokes:
+        for stroke in self.ink:
             axes.plot(stroke[:, 0], stroke[:, 1], "bo")
 
     def plot_all(self):
@@ -479,7 +442,7 @@ class StrokeFeatures(NormalizeStroke):
             raise
         return spline
 
-    @lazyprop
+    @cached_property
     def _rough_tangent(self):
         """ tangent given on a coarse grained polygon
         """
@@ -498,7 +461,7 @@ class StrokeFeatures(NormalizeStroke):
             rough_tangent += dpos_between.tolist()
         return np.array(rough_tangent)
 
-    @lazyprop
+    @cached_property
     def _length_along(self):
         """ spline length up to the knot
         """
@@ -536,7 +499,7 @@ class StrokeFeatures(NormalizeStroke):
         """
         return self._connected_stroke[:, 0]
 
-    @lazyprop
+    @cached_property
     def _connected_stroke(self):
         """ x,y position of the splines (discretized)
         """
@@ -545,7 +508,7 @@ class StrokeFeatures(NormalizeStroke):
             stroke += list(zip(*interpolate.splev(knots, spline)))
         return np.array(stroke)
 
-    @lazyprop
+    @cached_property
     def _stroke_der(self):
         """ derivative of the spline
         """
@@ -554,7 +517,7 @@ class StrokeFeatures(NormalizeStroke):
             stroke_der += list(zip(*interpolate.splev(knots, spline, der=1)))
         return np.array(stroke_der)
 
-    @lazyprop
+    @cached_property
     def _stroke_cur(self):
         """ curvature of the spline
         """
@@ -565,14 +528,14 @@ class StrokeFeatures(NormalizeStroke):
                                   der=2)).transpose().tolist()
         return np.array(stroke_cur)
 
-    @lazyprop
+    @cached_property
     def _tangent(self):
         """ normalized slope
         """
         return (self._stroke_der /
                 np.sum(self._stroke_der**2, axis=1)[:, np.newaxis]**0.5)
 
-    @lazyprop
+    @cached_property
     def radius_of_curvature(self):
         """ radius of a tangent circle at the point (positive and negaive)
         """
@@ -582,40 +545,40 @@ class StrokeFeatures(NormalizeStroke):
                     self._stroke_der[:, 1] * self._stroke_cur[:, 0]))
         return ret
 
-    @lazyprop
+    @cached_property
     def radius_normalized(self):
         """ a function of the radius
         """
         return (np.sign(self.radius_of_curvature) /
                 (1 + np.abs(self.radius_of_curvature)))
 
-    @lazyprop
+    @cached_property
     def delta_y(self):
         """ difference to the y-coordinate to the preceding point
         """
         return self._connected_stroke[1:, 1] - self._connected_stroke[:-1, 1]
 
-    @lazyprop
+    @cached_property
     def delta_y_extended(self):
         """ difference to the y-coordinate to the preceding point and zero for
             the first point
         """
         return np.concatenate([[0], self.delta_y])
 
-    @lazyprop
+    @cached_property
     def delta_x(self):
         """ difference to the x-coordinate to the preceding point
         """
         return self._connected_stroke[1:, 0]-self._connected_stroke[:-1, 0]
 
-    @lazyprop
+    @cached_property
     def delta_x_extended(self):
         """ difference to the x-coordinate to the preceding point and zero for
             the first point
         """
         return np.concatenate([[0], self.delta_x])
 
-    @lazyprop
+    @cached_property
     def pressure(self):
         """ Whether at the point the stroke starts, ends, or continues
         """
@@ -626,14 +589,14 @@ class StrokeFeatures(NormalizeStroke):
             pressure[i % len(pressure), 0] = 0
         return pressure
 
-    @lazyprop
+    @cached_property
     def _angle_direction(self):
         """ The angle of the current writing and the horizontal line
         """
         alpha = np.arctan2(self._tangent[:, 1], self._tangent[:, 0])
         return alpha
 
-    @lazyprop
+    @cached_property
     def writing_direction(self):
         """ The vector representation of _angle_direction
             (to avoid jump from 2*pi to 0)
@@ -641,7 +604,7 @@ class StrokeFeatures(NormalizeStroke):
         return np.column_stack([np.cos(self._angle_direction),
                                 np.sin(self._angle_direction)])
 
-    @lazyprop
+    @cached_property
     def _angle_curvature(self):
         """ The difference of to consecutives angles giving the writing direction
         """
@@ -649,7 +612,7 @@ class StrokeFeatures(NormalizeStroke):
         tmp[1:-1] = self._angle_direction[2:]-self._angle_direction[1:-1]
         return tmp
 
-    @lazyprop
+    @cached_property
     def x_low_pass(self):
         """ The average movement with respect to each single stroke
         """
@@ -664,20 +627,20 @@ class StrokeFeatures(NormalizeStroke):
         assert end == len(self.x_position)
         return low_pass
 
-    @lazyprop
+    @cached_property
     def x_low_pass_filtered(self):
         """ The deviation from the mean average movement in each stroke
         """
         return self.x_position - self.x_low_pass
 
-    @lazyprop
+    @cached_property
     def curvature(self):
         """ The vector representation of _angle_curvature
             (to avoid jump from 2*pi to 0)
         """
         return np.sin(self._angle_curvature), np.cos(self._angle_curvature)
 
-    @lazyprop
+    @cached_property
     def intersection(self):
         """ Whether an intersection occurs in the neightbourhood
         """
@@ -712,7 +675,7 @@ class StrokeFeatures(NormalizeStroke):
         ret[:-1] += ret[:-1] | conditions
         return 1*ret
 
-    @lazyprop
+    @cached_property
     def encased(self):
         """ Whether the point is encased (from top or bottom)
         """
@@ -736,7 +699,7 @@ class StrokeFeatures(NormalizeStroke):
         encased = np.column_stack([encased_from_below, encased_from_top])
         return encased
 
-    @lazyprop
+    @cached_property
     def encased_old(self):
         """ see encased, but is too slow due to sproot
         """
@@ -773,7 +736,7 @@ class StrokeFeatures(NormalizeStroke):
                 idx += 1
         return encased_from_below, encased_from_top
 
-    @lazyprop
+    @cached_property
     def features(self):
         """ provide a collection of features
 
@@ -813,8 +776,9 @@ def main():
 
     ink_page = load(FLAGS.file)
     ink = ink_page.lines[FLAGS.line_num]
-    strokes_features = StrokeFeatures(ink, normalize_first=True)
-    strokes_features.plot_normalization()
+    normalized = InkNormalization(ink)
+    normalized.plot()
+    strokes_features = InkFeatures(normalized.ink, normalize=True)
     strokes_features.plot_all()
 
 if __name__ == "__main__":
