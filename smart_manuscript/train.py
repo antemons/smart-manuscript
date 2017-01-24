@@ -468,7 +468,6 @@ def _build_train_and_test_sets(corpora_features, alphabet):
 def _get_sets_and_alphabet(alphabet=ALPHABET):
 
     if FLAGS.build_data <= 0:
-        from handwritten_vector_graphic import plot_strokes
         corpora = _load_corpora()
         corpora = _remove_forbitten_symbols(corpora, alphabet)
         pickle.dump(corpora, open("tmp/corpora.pkl", "wb"), -1)
