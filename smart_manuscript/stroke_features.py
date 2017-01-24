@@ -112,8 +112,8 @@ class InkPage(Ink):
     def __deepcopy__(self, _):
         return self.__class__(self.strokes, page_size=self.page_size)
 
-    @property
-    def lines(self, min_seperation=None):
+    @cached_property
+    def lines(self, min_seperation=None):  # TODO(daniel): remove min_seperation
         """ split the ink in several lines
         """
         lines = []

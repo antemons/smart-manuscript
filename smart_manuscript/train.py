@@ -30,7 +30,7 @@ import json
 from reader import GraphUtilities, labels_to_transcription, \
                    transcription_to_labels
 from iamondb import import_all_sets
-import stroke_features as sf
+from stroke_features import InkFeatures
 import glob
 import os
 from handwritten_vector_graphic import load as load_svg
@@ -111,7 +111,7 @@ class GraphTraining(GraphUtilities):
         self.path = "graphs/%s/" % FLAGS.name
         tf.logging.set_verbosity(tf.logging.DEBUG)
         self.build_graph(
-            sf.StrokeFeatures.NUM_FEATURES, num_classes,
+            InkFeatures.NUM_FEATURES, num_classes,
             json.loads(FLAGS.lstm_sizes))
 
     @staticmethod
@@ -349,10 +349,9 @@ def _load_corpus_from_svgs(folder):
         basename = os.path.basename(filename)
         corpus_name = os.path.splitext(basename)[0]
         ink, text = load_svg(filename, folder + corpus_name + ".txt")
-        ink_lines = sf.split_lines(ink)
-        assert len(ink_lines) == len(text), \
-            corpus_name + " %i != %i" % (len(ink_lines), len(text))
-        corpus[corpus_name] = list(zip(text, ink_lines))
+        assert len(ink.lines) == len(text), \
+            corpus_name + " %i != %i" % (len(ink.lines), len(text))
+        corpus[corpus_name] = list(zip(text, ink.lines))
     return corpus
 
 
@@ -361,9 +360,8 @@ def _load_the_zen_of_python():
     path_svg = "sample_text/The_Zen_of_Python.svg"
     path_txt = "sample_text/The_Zen_of_Python.txt"
     ink, text = load_svg(path_svg, path_txt)
-    ink_lines = sf.split_lines(ink, min_seperation=50)
-    assert len(ink_lines) == len(text), "%i!=%i" % (len(ink_lines), len(text))
-    corpus = {"the_zen_of_python":  list(zip(text, ink_lines))}
+    assert len(ink.lines) == len(text), "%i!=%i" % (len(ink.lines), len(text))
+    corpus = {"the_zen_of_python":  list(zip(text, ink.lines))}
     return corpus
 
 
@@ -427,7 +425,7 @@ def _ink_to_features(corpus, alphabet):
     for i, (transcription, ink) in enumerate(corpus):
         print("{:5.1f}%".format(100 * i / len(corpus)),
               flush=True, end="\r")
-        features = sf.StrokeFeatures(ink).features
+        features = InkFeatures(ink).features
         labels = transcription_to_labels(transcription, alphabet)
         if len(features) > 4 and len(labels) > 0:
             corpus_features.append((features, labels))
