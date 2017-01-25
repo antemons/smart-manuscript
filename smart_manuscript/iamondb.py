@@ -22,6 +22,7 @@
 
 from inkml import plot_ink, read_inkml_file
 from tensorflow.python.platform.app import flags
+import numpy as np
 import pylab as plt
 import os
 
@@ -80,10 +81,7 @@ def main():
     """
 
     import random
-
-    word_sets, line_sets = import_all_sets(FLAGS.iam_on_do_path)
-    words, lines = word_sets[1], line_sets[1]
-    # words, lines = _import_set(FLAGS.iam_on_do_path, "0.set")
+    words, lines = _import_set(FLAGS.iam_on_do_path, "0.set")
 
     while True:
         examples = random.sample(words, 8)

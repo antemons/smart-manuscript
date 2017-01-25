@@ -27,6 +27,12 @@ __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
 
 
+class Bunch(object):
+    """ collecting named items """
+    def __init__(self, **kwargs):
+        self.__dict__ = kwargs
+
+
 class Transformation(object):
 
     def __init__(self, param):

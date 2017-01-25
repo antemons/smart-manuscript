@@ -44,7 +44,7 @@ class Ink(object):
     def __init__(self, strokes):
         strokes = deepcopy(strokes)
         # TODO(dv): remove already here the dublicated points
-        # strokes = self._remove_dublicate_points(strokes)
+        strokes = self._remove_dublicate_points(strokes)
         self._connect_gapless_strokes(strokes)
         if strokes:
             self._concatenated_strokes = np.concatenate(strokes)
@@ -111,6 +111,20 @@ class Ink(object):
     def transform(self, transformation):
         self.concatenated_strokes = transformation * self.concatenated_strokes
 
+    def plot_pylab(self, axes, transcription=None, auxiliary_lines=False,
+                   hide_ticks=False):
+        if transcription is not None:
+            axes.set_title(transcription)
+        for stroke in self:
+            axes.plot(stroke[:, 0], stroke[:, 1], 'k-')
+        axes.set_aspect('equal')
+        if hide_ticks:
+            axes.get_xaxis().set_ticks([])
+            axes.get_yaxis().set_ticks([])
+        if auxiliary_lines:
+            axes.plot(self.boundary_box[:2], [0, 0], 'k:')
+            axes.plot(self.boundary_box[:2], [1, 1], 'k:')
+
 
 class InkPage(Ink):
     """ Ink on a page """
@@ -158,45 +172,28 @@ class InkNormalization(object):
 
     def plot(self):
         _, axes = plt.subplots(5)
-        self._plot_strokes(self.__strokes_orig, "original", axes[0])
+        self.__strokes_orig.plot_pylab(axes[0], "original")
         width = self.ink.boundary_box[1]
-        box = np.array([[0,0], [width, 0], [width, 1], [0, 1]])
+        box = np.array([[0, 0], [width, 0], [width, 1], [0, 1]])
         axes[0].scatter(*((~self._transformation) * box).transpose())
 
-        self._plot_strokes(self.__strokes_skew, "normalize skew", axes[1])
+        self.__strokes_skew.plot_pylab(axes[1], "normalize skew")
         axes[1].plot(self.__strokes_skew.boundary_box[:2], [0, 0], 'k:')
 
-        self._plot_strokes(self.__strokes_slant, "normalize slant", axes[2])
+        self.__strokes_slant.plot_pylab(axes[2], "normalize slant")
 
-        self._plot_strokes(
-            self.__strokes_baseline, "normalize baseline", axes[3])
+        self.__strokes_baseline.plot_pylab(axes[3], "normalize baseline",
+                                           auxiliary_lines=True)
         axes[3].scatter(*self.__minima.transpose(), c='b', edgecolors='face')
         axes[3].scatter(*self.__maxima.transpose(), c='r', edgecolors='face')
-        axes[3].plot(self.__strokes_baseline.boundary_box[:2], [0, 0], 'k:')
-        axes[3].plot(self.__strokes_baseline.boundary_box[:2], [1, 1], 'k:')
 
-        self._plot_strokes(self.__strokes_width, "normalize width", axes[4])
-        axes[4].plot(self.__strokes_width.boundary_box[:2], [0, 0], 'k:')
-        axes[4].plot(self.__strokes_width.boundary_box[:2], [1, 1], 'k:')
+        self.__strokes_width.plot_pylab(axes[4], "normalize width",
+                                        auxiliary_lines=True)
         plt.show()
 
     def _transform(self, transformation):
         self._transformation = transformation * self._transformation
         self.ink.transform(transformation)
-
-    @staticmethod
-    def _plot_strokes(strokes, description, axes=None):
-        """ plot current state of normalization
-
-        Args:
-            strokes (Ink): ink which is shown
-            description (str): title
-        """
-        if axes is not None:
-            axes.set_title(description)
-            for stroke in strokes:
-                axes.plot(stroke[:, 0], stroke[:, 1], 'g-')
-            axes.set_aspect('equal')
 
     def normalize_skew(self):
         """ normalize skew by an linear fit
@@ -334,7 +331,9 @@ class InkFeatures(object):
     @staticmethod
     def _remove_dublicate_points(strokes):
         def remove_dublicate_from_stroke(stroke):
-            return np.array([x for x, _ in groupby(stroke, tuple)])
+            new_stroke = np.array([x for x, _ in groupby(stroke, tuple)])
+            assert len(stroke) == len(new_stroke)
+            return new_stroke
         strokes = [remove_dublicate_from_stroke(stroke) for stroke in strokes]
         return strokes
 
@@ -789,6 +788,23 @@ class InkFeatures(object):
         return features
 
 
+def main_iamondb():
+    import random
+    from tensorflow.python.platform.app import flags
+    FLAGS = flags.FLAGS
+    from iamondb import _import_set, plot_ink
+    words, lines = _import_set(FLAGS.iam_on_do_path, "0.set")
+    while True:
+        sample = random.sample(lines, 4)
+        _, axes_arr = plt.subplots(len(sample), 2)
+        for i, (transcription, ink) in enumerate(sample):
+            plot_ink(ink, transcription, axes_arr[i, 0])
+            normalize_ink = InkNormalization(ink).ink
+            normalize_ink.plot_pylab(
+                axes_arr[i, 1], auxiliary_lines=True, hide_ticks=False)
+        plt.show()
+
+
 def main():
     from handwritten_vector_graphic import load
     from tensorflow.python.platform.app import flags
@@ -799,6 +815,8 @@ def main():
     flags.DEFINE_integer(
         "line_num", 0,
         "select line number")
+    flags.DEFINE_boolean(
+        "iamondb", False, "use examples from the IAMonDo-db-1")
 
     ink_page = load(FLAGS.file)
     ink = ink_page.lines[FLAGS.line_num]

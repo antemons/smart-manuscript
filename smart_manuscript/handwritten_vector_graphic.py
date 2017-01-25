@@ -63,19 +63,6 @@ def load(filename, transcription_file=None):
         transcription = _read_txt(transcription_file)
         return strokes, transcription
 
-
-def plot_page(ink, lines=None):
-    if lines is not None:
-        for line in lines:
-            print(line)
-    for stroke in ink:
-        plt.plot(stroke[:, 0], stroke[:, 1], '-')
-    plt.axes().set_aspect('equal')
-    plt.axes().set_xlim([0, ink.page_size[0]])
-    plt.axes().set_ylim([0, ink.page_size[1]])
-    plt.show()
-
-
 def _read_svg(filename, is_handwritten=None):
     """ Read all strokes from the svg file and save it together with the index
 
@@ -159,7 +146,8 @@ def main():
         "file", "sample_text/The_Zen_of_Python.pdf",
         "file to show features (either PDF or SVG)")
     ink = load(FLAGS.file)
-    plot_page(ink)
+    ink.plot_pylab(plt.axes())
+    plt.show()
 
 
 if __name__ == "__main__":

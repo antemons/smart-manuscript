@@ -34,6 +34,7 @@ from stroke_features import InkFeatures
 import glob
 import os
 from handwritten_vector_graphic import load as load_svg
+from utils import Bunch
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
@@ -92,12 +93,6 @@ ALPHABET = list("abcdefghijklmnopqrstuvwxyz"
                 "1234567890 ,.:;*+()/!?+-'\"$")
 
 
-class Bunch(object):
-    """ collecting named items """
-    def __init__(self, **kwargs):
-        self.__dict__ = kwargs
-
-
 class GraphTraining(GraphUtilities):
     """ Train the graph model """
 
@@ -154,6 +149,7 @@ class GraphTraining(GraphUtilities):
         b = tf.Variable(tf.constant(0.1, shape=[num_classes]))
         lstm_layer_output = tf.reshape(
             lstm_layer_output, [-1, 2 * num_hidden_neurons])
+        # TODO(daniel): apply sigmoid?
         logits = tf.matmul(lstm_layer_output, W) + b
         batch_size = tf.shape(inputs)[0]
         logits = tf.reshape(logits, [batch_size, -1, num_classes])
@@ -427,10 +423,9 @@ def _ink_to_features(corpus, alphabet):
               flush=True, end="\r")
         features = InkFeatures(ink).features
         labels = transcription_to_labels(transcription, alphabet)
-        if len(features) > 4 and len(labels) > 0:
+        if (len(features) > 4 and len(labels) > 0 and
+                len(labels) < len(features)):
             corpus_features.append((features, labels))
-        # else:
-        #    print("WARNING", len(features), i, labels)
     return corpus_features
 
 

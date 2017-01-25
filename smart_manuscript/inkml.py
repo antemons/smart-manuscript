@@ -42,6 +42,8 @@ def plot_ink(ink, transcription=None, axes=None):
     for stroke in ink:
         axes.plot(stroke[:, 0], stroke[:, 1], '-')
     axes.set_aspect('equal')
+    axes.get_xaxis().set_ticks([])
+    axes.get_yaxis().set_ticks([])
 
 
 def _to_float(text):
