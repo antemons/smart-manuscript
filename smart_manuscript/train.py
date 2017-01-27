@@ -189,14 +189,15 @@ class GraphTraining(GraphUtilities):
         print("create network", flush=True)
 
         with tf.device("/gpu:0"):
+            batch_size = max_input_seq_len = None
             print(" {:20}".format("placeholder", flush=True, end="\r"))
             self.learning_rate = tf.placeholder(
                 tf.float32, name="learning_rate")
             self.input = tf.placeholder(
-                tf.float32, shape=[None, None, num_features], name="input")
-            # dimensions: batch, time, depth
+                tf.float32, name="input",
+                shape=[batch_size, max_input_seq_len, num_features])
             self.input_seq_length = tf.placeholder(
-                tf.int32, shape=(None), name="input_seq_length")  # batch_size
+                tf.int32, shape=(batch_size), name="input_seq_length")
             self.target_indices = tf.placeholder(
                 tf.int64, name="target_indices")
             self.target_values = tf.placeholder(tf.int32, name="target_values")
@@ -283,7 +284,7 @@ class GraphTraining(GraphUtilities):
                 begin_step = 0
             print(" start training", flush=True)
             for step in range(begin_step, FLAGS.max_steps + 1):
-
+                print("step {}%".format(step), flush=True, end="\r")
                 feed_dict = {
                     **self.convert_to_tf((*list(zip(*batch_train(step))))),
                     self.learning_rate:

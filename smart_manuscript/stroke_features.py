@@ -44,8 +44,8 @@ class Ink(object):
     def __init__(self, strokes):
         strokes = deepcopy(strokes)
         # TODO(dv): remove already here the dublicated points
-        strokes = self._remove_dublicate_points(strokes)
         self._connect_gapless_strokes(strokes)
+        strokes = self._remove_dublicate_points(strokes)
         if strokes:
             self._concatenated_strokes = np.concatenate(strokes)
             sections = np.cumsum([len(s) for s in strokes])[:-1]
@@ -321,6 +321,7 @@ class InkFeatures(object):
         Args:
             strokes (Ink): ink to normalize
         """
+        assert isinstance(strokes, Ink)
         if normalize:
             strokes = InkNormalization(strokes).ink
         # strokes = deepcopy(strokes)
@@ -332,7 +333,7 @@ class InkFeatures(object):
     def _remove_dublicate_points(strokes):
         def remove_dublicate_from_stroke(stroke):
             new_stroke = np.array([x for x, _ in groupby(stroke, tuple)])
-            assert len(stroke) == len(new_stroke)
+            # assert len(stroke) == len(new_stroke)
             return new_stroke
         strokes = [remove_dublicate_from_stroke(stroke) for stroke in strokes]
         return strokes

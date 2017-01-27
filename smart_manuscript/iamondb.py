@@ -81,6 +81,8 @@ def main():
     """
 
     import random
+    # word_sets, line_sets = import_all_sets(FLAGS.iam_on_do_path)
+    # words, lines = word_sets[1], line_sets[1]
     words, lines = _import_set(FLAGS.iam_on_do_path, "0.set")
 
     while True:
