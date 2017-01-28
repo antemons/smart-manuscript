@@ -26,24 +26,100 @@ import pylab as plt
 import pickle
 from tensorflow.python.platform.app import flags
 from stroke_features import Ink
+import train_utils
+from utils import cached_property
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
 
-FLAGS = flags.FLAGS
-flags.DEFINE_integer("min_words_per_line", 3,
-                     "num of word required to accept as a textline")
 
+class InkML:
+    """ Parse a inkml-file to obtain all words, textlines and the full page
 
-def plot_ink(ink, transcription=None, axes=None):
-    if transcription is not None:
-        axes.set_title(transcription)
-    for stroke in ink:
-        axes.plot(stroke[:, 0], stroke[:, 1], '-')
-    axes.set_aspect('equal')
-    axes.get_xaxis().set_ticks([])
-    axes.get_yaxis().set_ticks([])
+    The words are part of the textlines. It merge single symbols like ",", "."
+    with the  precising word.
+    """
+
+    def __init__(self, filename):
+        """
+            Args:
+                filename (str): path of the inkml-file
+        """
+        xml_tree = et.parse(filename)
+        self.xml_root = xml_tree.getroot()
+
+    @cached_property
+    def traces(self):
+        traces = {}
+        for xml_node in self.xml_root.findall("trace"):
+            trace_id = xml_node.get('{http://www.w3.org/XML/1998/namespace}id')
+            text = xml_node.text.split(",")
+            stroke = []
+            for i, entry in enumerate(text):
+                if i == 0:
+                    x, y, t, _ = _to_float(entry)
+                if i == 1:
+                    vx, vy, dt, _ = _to_float(entry)
+                    x += vx
+                    y += vy
+                if i > 1:
+                    ax, ay, ddt, _ = _to_float(entry)
+                    vx += ax
+                    vy += ay
+                    x += vx
+                    y += vy
+                stroke.append(np.array([-x, y], float))
+            traces[trace_id] = np.array(stroke)
+        return traces
+
+    @cached_property
+    def lines(self):
+        corpus = train_utils.Corpus()
+        for textline_node in _get_all_textline_nodes(self.xml_root):
+            trace_refs = []
+            transcription = _get_transcription(textline_node)
+            if transcription:
+                for word_node in _child_nodes_of_type(textline_node, "Word"):
+                    if _includes_corrections(word_node):
+                        continue
+                    trace_refs += _get_trace_refs(word_node)
+                strokes = _trace_refs_to_strokes(trace_refs, self.traces)
+                corpus.append((transcription, Ink(strokes)))
+        return corpus
+
+    @cached_property
+    def words(self):
+        corpus = train_utils.Corpus()
+        for textline_node in _get_all_textline_nodes(self.xml_root):
+            is_first_word_of_textline = True
+            for word_node in _child_nodes_of_type(textline_node, "Word"):
+                if _includes_corrections(word_node):
+                    continue
+                transcription = _get_transcription(word_node)
+                trace_refs = _get_trace_refs(word_node)
+                strokes = _trace_refs_to_strokes(trace_refs, self.traces)
+                if not transcription or not strokes:
+                    continue
+
+                # merge special symbols with the last recogniced word
+                if transcription in set(",.:;*+()/!?+-'\"$"):
+                    if not is_first_word_of_textline:
+                        last = corpus.pop()
+                        current = (transcription, Ink(strokes))
+                        merged = tuple(a + b for a, b in zip(last, current))
+                        corpus.append(merged)
+                else:
+                    corpus.append((transcription, Ink(strokes)))
+                    is_first_word_of_textline = False
+        return corpus
+
+    @cached_property
+    def page(self):
+        page = Ink()
+        for _, line in self.lines:
+            page += line
+        return page
 
 
 def _to_float(text):
@@ -80,17 +156,14 @@ def _get_transcription(xml_node):
     return t
 
 
-def _rotate(strokes, rot_angle):
-    rotations_matrix = np.array(
-            [[np.cos(rot_angle), -np.sin(rot_angle)],
-             [np.sin(rot_angle),  np.cos(rot_angle)]])
-    strokes_rotated = []
-    for stroke in strokes:
-        strokes_rotated.append(np.dot(rotations_matrix, stroke.T).T)
-    return strokes_rotated
+def _includes_corrections(word_node):
+    for child_trace_ref in word_node.findall("traceView"):
+        if _is_type(child_trace_ref, "Correction"):
+            return True
+    return False
 
 
-def _get_ink(word_node, traces):
+def _get_trace_refs(word_node):
     trace_refs = []
     with_correction = False
     for child_trace_ref in word_node.findall("traceView"):
@@ -99,9 +172,13 @@ def _get_ink(word_node, traces):
             continue
         trace_refs.append(child_trace_ref.attrib["traceDataRef"])
     if with_correction:
+        assert False
         return None
-    return [traces[trace_ref.replace("#", "")]
-            for trace_ref in trace_refs]
+    return trace_refs
+
+
+def _trace_refs_to_strokes(trace_refs, traces):
+    return [traces[trace_ref.replace("#", "")] for trace_ref in trace_refs]
 
 
 def _get_all_textline_nodes(xml_root):
@@ -112,91 +189,18 @@ def _get_all_textline_nodes(xml_root):
                 yield textline_node
 
 
-def _get_traces(xml_root):
-    traces = {}
-    for xml_node in xml_root.findall("trace"):
-        trace_id = xml_node.get('{http://www.w3.org/XML/1998/namespace}id')
-        text = xml_node.text.split(",")
-        stroke = []
-        for i, entry in enumerate(text):
-            if i == 0:
-                x, y, t, _ = _to_float(entry)
-            if i == 1:
-                vx, vy, dt, _ = _to_float(entry)
-                x += vx
-                y += vy
-            if i > 1:
-                ax, ay, ddt, _ = _to_float(entry)
-                vx += ax
-                vy += ay
-                x += vx
-                y += vy
-            stroke.append(np.array([-x, y], float))
-        traces[trace_id] = np.array(stroke)
-    return traces
+def main():
+    FLAGS = flags.FLAGS
+    flags.DEFINE_string("inkml_file", "data/IAMonDo-db-1.0/003.inkml",
+                        "path to an inkml-file")
+    inkml = InkML(FLAGS.inkml_file)
+    inkml.page.plot_pylab()
+    plt.show()
+
+    for _, line in inkml.lines:
+        line.plot_pylab()
+        plt.show()
 
 
-def read_inkml_file(filename):
-    """ Parse a inkml-file to obtain all single words and textlines
-
-    The words are part of the textlines. It merge single symbols like ",", "."
-    with the  precising word.
-
-    Args:
-        filename (str): path of the inkml-file
-
-    Returns:
-        tuple (word_corpus, text_corpus): each corpus is a nested list of
-            tuples (transcription (str), ink (list of arrays))
-    """
-    xml_tree = et.parse(filename)
-    xml_root = xml_tree.getroot()
-
-    traces = _get_traces(xml_root)
-
-    textlines = []
-    words = []
-
-    for textline_node in _get_all_textline_nodes(xml_root):
-        new_textline_ink = []
-        for word_node in _child_nodes_of_type(textline_node, "Word"):
-            word_ink = _get_ink(word_node, traces)
-            word_transcription = _get_transcription(word_node)
-            if word_transcription and word_ink:
-                # merge special symbols with the last recogniced word
-                if (word_transcription in set(",.:;*+()/!?+-'\"$") and
-                        words and new_textline_ink):
-                    last_word = words[-1]
-                    extension = (_get_transcription(word_node), word_ink)
-                    words[-1] = tuple(a + b for a, b in
-                                      zip(last_word, extension))
-                else:
-                    words.append(
-                        (_get_transcription(word_node), word_ink))
-                new_textline_ink.extend(word_ink)
-        textline_transcription = _get_transcription(textline_node)
-        if textline_transcription:
-            textlines.append((textline_transcription, new_textline_ink))
-
-    word_direction = np.array([0, 0], float)
-    for _, strokes in words:
-        word_direction += strokes[-1][-1] - strokes[0][0]
-
-    angle = np.arctan2(*word_direction[::-1])
-    if -np.pi/4 <= angle and angle < np.pi/4:
-        rot_angle = 0  # direction = "normal"
-    elif np.pi/4 <= angle and angle < 3*np.pi/4:
-        rot_angle = -np.pi/2  # direction = "right"
-    elif 3*np.pi/4 <= angle or angle < - 3*np.pi/4:
-        rot_angle = np.pi  # direction = "inverted":
-    elif - 3*np.pi/4 <= angle and angle < - np.pi/4:
-        rot_angle = np.pi/2  # direction = "left"
-    else:
-        assert False
-
-    words = [(transcription, Ink(_rotate(strokes, rot_angle)))
-             for transcription, strokes in words]
-    textlines = [(transcription, Ink(_rotate(strokes, rot_angle)))
-                 for transcription, strokes in textlines]
-
-    return words, textlines
+if __name__ == "__main__":
+    main()

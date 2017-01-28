@@ -30,12 +30,13 @@ import subprocess
 import re
 from utils import Transformation
 
+
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
 
 
-def load(filename, transcription_file=None):
+def load(filename):
     """ load svg file in optionally also the transcription
 
     Args:
@@ -54,14 +55,9 @@ def load(filename, transcription_file=None):
     elif filename.endswith('.svg') or filename.endswith('.SVG'):
         strokes = _read_svg(filename)
     else:
-        print("file must be either PDF or SVG")
-        exit()
+        raise Exception("file must be either PDF or SVG")
+    return strokes
 
-    if transcription_file is None:
-        return strokes
-    else:
-        transcription = _read_txt(transcription_file)
-        return strokes, transcription
 
 def _read_svg(filename, is_handwritten=None):
     """ Read all strokes from the svg file and save it together with the index
@@ -116,15 +112,6 @@ def _read_svg(filename, is_handwritten=None):
     return InkPage(strokes, page_size=(WIDTH, HEIGHT))
 
 
-
-def _read_txt(txt_file):
-    """ read the (truth) transcription from a text-file
-    """
-    with open(txt_file) as f:
-        textlines = [l.replace("\n", "") for l in f.readlines()]
-    return textlines
-
-
 def _pdf_to_svg_tmp(pdf_path):
     pdf_basename = basename(pdf_path)
     svg_basename = pdf_basename.replace(".pdf", ".svg")
@@ -138,6 +125,7 @@ def _read_pdf(filename, is_handwritten=None):
     svg_filename = _pdf_to_svg_tmp(filename)
     return _read_svg(svg_filename, is_handwritten)
 
+
 def main():
     """ show sample handwritten notes """
     from tensorflow.python.platform.app import flags
@@ -146,8 +134,12 @@ def main():
         "file", "sample_text/The_Zen_of_Python.pdf",
         "file to show features (either PDF or SVG)")
     ink = load(FLAGS.file)
-    ink.plot_pylab(plt.axes())
+    ink.plot_pylab()
     plt.show()
+
+    for line in ink.lines:
+        line.plot_pylab()
+        plt.show()
 
 
 if __name__ == "__main__":

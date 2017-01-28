@@ -42,34 +42,32 @@ class Transformation(object):
 
     @classmethod
     def identity(cls):
-        return Transformation([1, 0, 0, 0, 1, 0])
+        return cls([1, 0, 0, 0, 1, 0])
 
     @classmethod
     def translation(cls, x, y):
-        return Transformation([1, 0, x, 0, 1, y])
+        return cls([1, 0, x, 0, 1, y])
 
     @classmethod
     def rotation(cls, angle):
-        return Transformation([np.cos(angle), - np.sin(angle), 0,
+        return cls([np.cos(angle), - np.sin(angle), 0,
                                np.sin(angle),   np.cos(angle), 0])
 
     @classmethod
     def scale(cls, factor):
         if isinstance(factor, tuple):
-            return Transformation(
-                [factor[0], 0, 0, 0, factor[1], 0])
+            return cls([factor[0], 0, 0, 0, factor[1], 0])
         else:
-            return Transformation([factor, 0, 0, 0, factor, 0])
+            return cls([factor, 0, 0, 0, factor, 0])
 
     @classmethod
     def shear(cls, x_angle=0, y_angle=0):
-        return Transformation([1, np.tan(y_angle), 0,
-                               np.tan(x_angle), 1, 0])
+        return cls([1, np.tan(y_angle), 0, np.tan(x_angle), 1, 0])
 
     @classmethod
     def mirror(cls, angle):
-        return Transformation([np.cos(angle),  np.sin(angle), 0,
-                               np.sin(angle), -np.cos(angle), 0])
+        return cls([np.cos(angle),  np.sin(angle), 0,
+                    np.sin(angle), -np.cos(angle), 0])
 
     @property
     def parameter(self):

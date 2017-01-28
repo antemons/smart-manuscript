@@ -34,18 +34,23 @@ __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
 
 
-class Ink(object):
+class Ink:
     """ Set of strokes
 
         nested list strokes (float[L,2]), the (x,y)-points for each point in
         each stroke in each strokes
     """
+    _HAS_NO_DUBLICATES_OR_ZERO_GAPS = True
 
-    def __init__(self, strokes):
+    def __init__(self, strokes=[],
+                 check_duplicates_and_gaps=True):  # pylint: disable=W0102
         strokes = deepcopy(strokes)
-        # TODO(dv): remove already here the dublicated points
-        self._connect_gapless_strokes(strokes)
-        strokes = self._remove_dublicate_points(strokes)
+
+        if (not hasattr(strokes, "_HAS_NO_DUBLICATES_OR_ZERO_GAPS") and
+                check_duplicates_and_gaps):
+            self._connect_gapless_strokes(strokes)
+            self._remove_dublicated_points(strokes)
+
         if strokes:
             self._concatenated_strokes = np.concatenate(strokes)
             sections = np.cumsum([len(s) for s in strokes])[:-1]
@@ -55,7 +60,7 @@ class Ink(object):
             self.strokes = []
 
     def __deepcopy__(self, _):
-        return self.__class__(self.strokes)  # connect_gaps and remove duplicated redundant
+        return self.__class__(self.strokes, check_duplicates_and_gaps=False)
 
     def __getstate__(self):
         return self.strokes
@@ -75,11 +80,19 @@ class Ink(object):
         self._concatenated_strokes[:] = value
 
     @staticmethod
-    def _remove_dublicate_points(strokes):
-        def remove_dublicates_from_stroke(stroke):
-            return np.array([x for x, _ in groupby(stroke, tuple)])
-        return [remove_dublicates_from_stroke(stroke)
-                for stroke in strokes]
+    def _remove_dublicated_points(strokes):
+        for i in range(len(strokes)):
+            stroke = [point for point in strokes[i]]
+            for j in reversed(range(len(stroke)-1)):
+                if sum(abs(stroke[j] - stroke[j+1])) < 10**-7:
+                    stroke[j] = (stroke[j] + stroke[j+1]) / 2
+                    stroke.pop(j+1)
+            strokes[i] = np.array(stroke)
+
+        # def remove_dublicates_from_stroke(stroke):
+        #     return np.array([x for x, _ in groupby(stroke, tuple)])
+        # for i, stroke in enumerate(strokes):
+        #     strokes[i] = remove_dublicates_from_stroke(stroke)
 
     @staticmethod
     def _connect_gapless_strokes(strokes):
@@ -99,6 +112,11 @@ class Ink(object):
                 max(self._concatenated_strokes[:, 1]))
 
     @property
+    def width_height_ratio(self):
+        min_x, max_x, min_y, max_y = self.boundary_box
+        return (max_x - min_x) / (max_y - min_y)
+
+    @property
     def length(self):
         def stroke_length(stroke):
             x = stroke[:, 0]
@@ -111,8 +129,10 @@ class Ink(object):
     def transform(self, transformation):
         self.concatenated_strokes = transformation * self.concatenated_strokes
 
-    def plot_pylab(self, axes, transcription=None, auxiliary_lines=False,
+    def plot_pylab(self, axes=None, transcription=None, auxiliary_lines=False,
                    hide_ticks=False):
+        if axes is None:
+            axes = plt.axes()
         if transcription is not None:
             axes.set_title(transcription)
         for stroke in self:
@@ -124,6 +144,9 @@ class Ink(object):
         if auxiliary_lines:
             axes.plot(self.boundary_box[:2], [0, 0], 'k:')
             axes.plot(self.boundary_box[:2], [1, 1], 'k:')
+
+    def __add__(self, other):
+        return self.__class__(self.strokes + other.strokes)
 
 
 class InkPage(Ink):
@@ -149,7 +172,7 @@ class InkPage(Ink):
                                    min_seperation > stroke[0, 0])):
                 lines.append([])
             lines[-1].append(stroke)
-        return [Ink(line) for line in lines]
+        return [Ink(line, check_duplicates_and_gaps=False) for line in lines]
 
 
 class InkNormalization:
@@ -335,8 +358,13 @@ class InkFeatures:
         """
         assert hasattr(ink, "_HAS_NO_DUBLICATES_OR_ZERO_GAPS")
         assert len(ink.concatenated_strokes) == len(Ink(ink.strokes).concatenated_strokes)
+        ink = Ink(ink.strokes)  # remove duplicated
         if normalize:
             ink = InkNormalization(ink).ink
+        self.INK = ink
+
+    def has_been_well_normalized(self):
+        return self.INK.width_height_ratio > 2
 
     @cached_property
     def _splines(self):
@@ -464,6 +492,9 @@ class InkFeatures:
             spline, _ = interpolate.splprep([x, y], k=3, u=dist_along, s=0)
         except SystemError:
             print(x, y, type(x))
+            dist = np.sqrt((x[:-1] - x[1:])**2 + (y[:-1] - y[1:])**2)
+            print(dist)
+
             raise
         return spline
 
@@ -789,16 +820,29 @@ class InkFeatures:
 
 
 def main_iamondb():
-    import random
     from tensorflow.python.platform.app import flags
+    from inkml import InkML
+
     FLAGS = flags.FLAGS
-    from iamondb import _import_set, plot_ink
-    words, lines = _import_set(FLAGS.iam_on_do_path, "0.set")
-    while True:
-        sample = random.sample(lines, 4)
+    inkml = InkML(FLAGS.inkml_file)
+
+
+    #for _, line in lines:
+    #line.plot_pylab()
+    #page.plot_pylab()
+    #plt.show()
+
+    #import random
+    #
+
+    def devided_in_chunks(sequence, size):
+        return (sequence[pos:pos + size]
+                for pos in range(0, len(sequence), size))
+
+    for j, sample in enumerate(devided_in_chunks(inkml.lines, 4)):
         _, axes_arr = plt.subplots(len(sample), 2)
         for i, (transcription, ink) in enumerate(sample):
-            plot_ink(ink, transcription, axes_arr[i, 0])
+            ink.plot_pylab(axes_arr[i, 0], transcription + " " + str(4*j + i))
             normalize_ink = InkNormalization(ink).ink
             normalize_ink.plot_pylab(
                 axes_arr[i, 1], auxiliary_lines=True, hide_ticks=False)
@@ -820,10 +864,23 @@ def main():
 
     ink_page = load(FLAGS.file)
     ink = ink_page.lines[FLAGS.line_num]
+    plot_all_steps(ink)
+
+
+def plot_all_steps(ink):
     normalized = InkNormalization(ink)
     normalized.plot()
     strokes_features = InkFeatures(normalized.ink, normalize=False)
     strokes_features.plot_all()
 
 if __name__ == "__main__":
-    main()
+    from tensorflow.python.platform.app import flags
+    FLAGS = flags.FLAGS
+    flags.DEFINE_string("inkml_file", "data/IAMonDo-db-1.0/003.inkml",
+                        "path to an inkml-file")
+    from inkml import InkML
+
+    FLAGS = flags.FLAGS
+    inkml = InkML(FLAGS.inkml_file)
+    plot_all_steps(inkml.lines[16][1])
+    #main_iamondb()
