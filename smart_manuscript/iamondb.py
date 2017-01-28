@@ -54,7 +54,7 @@ def _import_set(iam_on_db_path, set_filename):
     corpara_word = train_utils.Corpus()
     corpara_line = train_utils.Corpus()
     num_files = 0
-    filenames = list(files_in_set(iam_on_db_path, set_filename))[:25]
+    filenames = list(files_in_set(iam_on_db_path, set_filename))
     for i, inkml_filename in enumerate(filenames):
         print("import {:3}/{:3} ({})  ".format(
             i, len(filenames), inkml_filename), end="\r")
