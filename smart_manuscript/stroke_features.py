@@ -152,7 +152,7 @@ class InkPage(Ink):
         return [Ink(line) for line in lines]
 
 
-class InkNormalization(object):
+class InkNormalization:
     """ normalize a stroke by slant, skew, baseline, height, and width
     """
 
@@ -161,6 +161,7 @@ class InkNormalization(object):
         self._transformation = Transformation.identity()
         self.__strokes_orig = deepcopy(self.ink)
         self.normalize_skew()
+        self.rotate_if_upside_down()
         self.__strokes_skew = deepcopy(self.ink)
         self.normalize_slant()
         self.__strokes_slant = deepcopy(self.ink)
@@ -195,6 +196,13 @@ class InkNormalization(object):
         self._transformation = transformation * self._transformation
         self.ink.transform(transformation)
 
+    def rotate_if_upside_down(self):
+        a, _ = np.polyfit(np.arange(len(self.ink.concatenated_strokes)),
+                          self.ink.concatenated_strokes[:, 0], 1)
+        if a < 0:
+            transformation = Transformation.rotation(np.pi)
+            self._transform(transformation)
+
     def normalize_skew(self):
         """ normalize skew by an linear fit
 
@@ -202,13 +210,15 @@ class InkNormalization(object):
             strokes (Ink): ink to normalize
         """
         # TODO: only if long enough
+        #TODO(daniel): resampling in advance
+        cov = np.cov(self.ink.concatenated_strokes.transpose())
+        mean = np.mean(self.ink.concatenated_strokes, axis=0)
+        eigvals, eigvecs = np.linalg.eig(cov)
+        eigval, eigvec = sorted(zip(eigvals, eigvecs))[1]
+        angle = -np.arctan2(*eigvec[::-1])
 
-        a, b = np.polyfit(self.ink.concatenated_strokes[:, 0],
-                          self.ink.concatenated_strokes[:, 1], 1)
-        transformation = (Transformation.rotation(- np.arctan(a)) *
-                           Transformation.translation(0, -b))
-        #transformation = (Transformation.shear(y_angle=-np.arctan(a)) *
-        #                  Transformation.translation(0, -b))
+        transformation = (Transformation.rotation(-angle) *
+                          Transformation.translation(*(-mean)))
         self._transform(transformation)
 
     def normalize_left(self):
@@ -263,20 +273,22 @@ class InkNormalization(object):
             minima.extend(stroke[idx_min])
             maxima.extend(stroke[idx_max])
         minima, maxima = np.array(minima), np.array(maxima)
+        minima = minima[minima[:, 1] < 0]
+        maxima = maxima[maxima[:, 1] > 0]
         assert (minima.size and maxima.size)
 
         BASELINE = np.average(minima[:, 1])
         MEANLINE = np.average(maxima[:, 1])
-        if MEANLINE > BASELINE:
-            minima = minima[minima[:, 1] < MEANLINE]
-            maxima = maxima[maxima[:, 1] > BASELINE]
-            BASELINE = np.average(minima[:, 1])
-            MEANLINE = np.average(maxima[:, 1])
-            HEIGHT = MEANLINE - BASELINE
-            transformation = (Transformation.scale(1 / HEIGHT) *
-                              Transformation.translation(0, - BASELINE))
-        else:
-            transformation = Transformation.translation(0, - BASELINE + .5)
+        # if MEANLINE > BASELINE:
+        #     minima = minima[minima[:, 1] < MEANLINE]
+        #     maxima = maxima[maxima[:, 1] > BASELINE]
+        #     BASELINE = np.average(minima[:, 1])
+        #     MEANLINE = np.average(maxima[:, 1])
+        HEIGHT = MEANLINE - BASELINE
+        transformation = (Transformation.scale(1 / HEIGHT) *
+                          Transformation.translation(0, - BASELINE))
+        # else:
+        #     transformation = Transformation.translation(0, - BASELINE + .5)
 
         self._transform(transformation)
 
@@ -307,41 +319,28 @@ class InkNormalization(object):
         self._transform(transformation)
 
 
-class InkFeatures(object):
-    """ Generates features of a given stroke
+class InkFeatures:
+    """ Generates features characterizing the ink
     """
 
     NUM_FEATURES = 14
     DOTS_PER_UNIT = 5
     RDP_EPSILON = 0.02
 
-    def __init__(self, strokes, normalize=True):
+    def __init__(self, ink, normalize=True):
         """ Provide a list of features characterizing the set of strokes
 
         Args:
             strokes (Ink): ink to normalize
         """
-        assert isinstance(strokes, Ink)
+        assert hasattr(ink, "_HAS_NO_DUBLICATES_OR_ZERO_GAPS")
+        assert len(ink.concatenated_strokes) == len(Ink(ink.strokes).concatenated_strokes)
         if normalize:
-            strokes = InkNormalization(strokes).ink
-        # strokes = deepcopy(strokes)
-        #self.ink = strokes
-        self.ink = self._remove_dublicate_points(strokes)
-
-    # TODO(daniel): move to Ink
-    @staticmethod
-    def _remove_dublicate_points(strokes):
-        def remove_dublicate_from_stroke(stroke):
-            new_stroke = np.array([x for x, _ in groupby(stroke, tuple)])
-            # assert len(stroke) == len(new_stroke)
-            return new_stroke
-        strokes = [remove_dublicate_from_stroke(stroke) for stroke in strokes]
-        return strokes
-
+            ink = InkNormalization(ink).ink
 
     @cached_property
     def _splines(self):
-        return [self._create_spline(stroke) for stroke in self.ink]
+        return [self._create_spline(stroke) for stroke in self.INK]
 
     @cached_property
     def _knots(self):
@@ -429,7 +428,7 @@ class InkFeatures(object):
     def _plot_orig_strokes(self, axes):
         axes.set_aspect('equal')
         axes.set_title("orig_strokes")
-        for stroke in self.ink:
+        for stroke in self.INK:
             axes.plot(stroke[:, 0], stroke[:, 1], "bo")
 
     def plot_all(self):
