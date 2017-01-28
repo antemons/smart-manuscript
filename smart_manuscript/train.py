@@ -280,7 +280,7 @@ class GraphTraining(GraphUtilities):
                 begin_step = 0
             print(" start training", flush=True)
             for step in range(begin_step, FLAGS.max_steps + 1):
-                print("step {}%".format(step), flush=True, end="\r")
+                print("step {}".format(step), flush=True, end="\r")
                 feed_dict = {
                     **self.convert_to_tf((*list(zip(*batch_train(step))))),
                     self.learning_rate:

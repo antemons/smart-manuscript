@@ -296,18 +296,14 @@ class InkNormalization:
             minima.extend(stroke[idx_min])
             maxima.extend(stroke[idx_max])
         minima, maxima = np.array(minima), np.array(maxima)
-        minima = minima[minima[:, 1] < 0]
-        maxima = maxima[maxima[:, 1] > 0]
+        minima = minima[minima[:, 1] <= 0]
+        maxima = maxima[maxima[:, 1] >= 0]
         assert (minima.size and maxima.size)
 
         BASELINE = np.average(minima[:, 1])
         MEANLINE = np.average(maxima[:, 1])
-        # if MEANLINE > BASELINE:
-        #     minima = minima[minima[:, 1] < MEANLINE]
-        #     maxima = maxima[maxima[:, 1] > BASELINE]
-        #     BASELINE = np.average(minima[:, 1])
-        #     MEANLINE = np.average(maxima[:, 1])
         HEIGHT = MEANLINE - BASELINE
+        if HEIGHT == 0: HEIGHT = 1
         transformation = (Transformation.scale(1 / HEIGHT) *
                           Transformation.translation(0, - BASELINE))
         # else:

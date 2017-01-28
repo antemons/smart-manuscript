@@ -24,6 +24,7 @@ __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
 
+import numpy as np
 from random import choice, sample
 import pylab as plt
 from tensorflow.python.platform.app import flags
