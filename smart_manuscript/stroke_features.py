@@ -352,12 +352,29 @@ class InkFeatures:
         Args:
             strokes (Ink): ink to normalize
         """
+        # Remove the follwoing three lines
         assert hasattr(ink, "_HAS_NO_DUBLICATES_OR_ZERO_GAPS")
         assert len(ink.concatenated_strokes) == len(Ink(ink.strokes).concatenated_strokes)
         ink = Ink(ink.strokes)  # remove duplicated
         if normalize:
             ink = InkNormalization(ink).ink
         self.INK = ink
+
+    @staticmethod
+    def plot_features(features, transcription=None, axes=None):
+        """ show the strokes (only from the features)
+        """
+        x = np.cumsum(features[:, 11])
+        y = features[:, 1]
+
+        if axes is None:
+            axes = plt.axes()
+        if transcription is not None:
+            axes.set_title(transcription)
+        axes.plot([min(x), max(x)], [0, 0], 'k:')
+        axes.plot([min(x), max(x)], [1, 1], 'k:')
+        axes.plot(x, y, "g-")
+        axes.set_aspect('equal')
 
     def has_been_well_normalized(self):
         return self.INK.width_height_ratio > 2
