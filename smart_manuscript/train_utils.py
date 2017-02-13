@@ -34,12 +34,15 @@ from stroke_features import InkFeatures
 from reader import transcription_to_labels
 from handwritten_vector_graphic import load as load_pdf
 import iamondb
+import pickle
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer("min_words_per_line", 3,
-                     "num of word required to accept as a textline")
-flags.DEFINE_string("iam_on_do_path", "data/IAMonDo-db-1.0",
-                    "path to IAMonDo-db-1.0 folder (unzipped)")
+if __name__ != "__main__":
+    flags.DEFINE_integer("min_words_per_line", 3,
+                         "num of word required to accept as a textline")
+    flags.DEFINE_string("iam_on_do_path", "data/IAMonDo-db-1.0",
+                        "path to IAMonDo-db-1.0 folder (unzipped)")
+
 
 class Corpus(list):
 
@@ -79,6 +82,9 @@ class Corpus(list):
 
         self[:] = [(transcription, i) for (transcription, i) in self
                    if not (set(transcription) - alphabet_set)]
+        removed_text = [transcription for transcription, _ in self
+                        if (set(transcription) - alphabet_set)]
+        print("Removed text:", removed_text)
 
     def _discard_short_textlines(self):
         min_word_num = FLAGS.min_words_per_line
@@ -89,6 +95,9 @@ class Corpus(list):
         self[:] = [(transcription, i) for (transcription, i) in self
                    if len(transcription) > 0]
 
+    def _discard_single_letters(self):
+        self[:] = [(transcription, i) for (transcription, i) in self
+                   if len(transcription) > 1]
     @staticmethod
     def _discard_short_features(data):
         data[:] = [(features, labels) for (features, labels) in data
@@ -100,11 +109,11 @@ class Corpus(list):
             with features/labels
         """
 
-
         length_old = len(self)
 
         if discard_short_textlines:
             self._discard_short_textlines()
+        self._discard_single_letters()
         self._discard_unknown_characters(alphabet)
         self._discard_empty_transcription()
         data = []
@@ -114,9 +123,7 @@ class Corpus(list):
             features = InkFeatures(ink)
             labels = transcription_to_labels(transcription, alphabet)
 
-            if (len(features.features) < 4 or
-                    len(labels) > len(features.features) or
-                    not features.has_been_well_normalized()):
+            if not features.has_been_well_normalized:
                 continue
 
             data.append((features.features, labels))
@@ -164,7 +171,7 @@ def load_corpora():
     corpora["test_line"] = corpara_line[4]
 
     if FLAGS.train_my_writing:
-        folder="data/my_handwriting/"
+        folder = "data/my_handwriting/"
         corpus_train = Corpus.from_folder(folder + "train/")
         corpus_test = Corpus.from_folder(folder + "test/")
         corpora["train_my_writing"] = corpus_train
@@ -221,3 +228,52 @@ def get_trainings_batch_creator(data):
     else:
         raise Exception("not implemented")
     return batch_train
+
+
+def get_sets_and_alphabet(alphabet=None, load_cached_features=False,
+                          load_cached_corpus=False):
+    """ load the samples (list of label/features tuples)
+
+    Args:
+        alphabet (list of chars): valid symbols
+        load_cached_features (boolean): if True it loads the chached features
+            (requires providing the alphabet)
+        load_cached_corpus (boolean): load corpus from inkml/svgs
+
+    Returns:
+        tuple (samples, alphabet):
+    """
+
+    if not load_cached_corpus and not load_cached_features:
+        corpora = load_corpora()
+        pickle.dump(corpora, open("tmp/corpora.pkl", "wb"), -1)
+
+    if not load_cached_features:
+        assert alphabet is not None
+        corpora = pickle.load(open("tmp/corpora.pkl", "rb"))
+        print("extract features from several corpora,"
+              "this may take a few minutes")
+        samples = corpora.convert_to_features_and_labels(alphabet)
+        pickle.dump(samples, open("tmp/samples.pkl", "wb"), -1)
+        pickle.dump(alphabet, open("tmp/alphabet.pkl", "wb"), -1)
+    else:
+        samples = pickle.load(open("tmp/samples.pkl", "rb"))
+        alphabet = pickle.load(open("tmp/alphabet.pkl", "rb"))
+    return samples, alphabet
+
+
+def main():
+    samples, alphabet = get_sets_and_alphabet(load_cached_features=True)
+    from random import choice
+    from reader import labels_to_transcription
+    import pylab as plt
+
+    while True:
+        features, labels = choice(samples["train_word"])
+        print(labels)
+        transcription = labels_to_transcription(labels, alphabet)
+        InkFeatures.plot_features(features, transcription=transcription)
+        plt.show()
+
+if __name__ == "__main__":
+    main()

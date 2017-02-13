@@ -25,12 +25,11 @@ import tensorflow as tf
 from tensorflow.python.ops import ctc_ops as ctc
 import numpy as np
 import json
-from reader import GraphUtilities, labels_to_transcription, \
-                   transcription_to_labels
+from reader import GraphUtilities, labels_to_transcription
 from stroke_features import InkFeatures
 from utils import Bunch
-from train_utils import Corpus, Corpora, get_trainings_batch_creator, \
-                        get_test_batches, load_corpora
+from train_utils import get_sets_and_alphabet, get_trainings_batch_creator, \
+                        get_test_batches
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
@@ -145,7 +144,7 @@ class GraphTraining(GraphUtilities):
         b = tf.Variable(tf.constant(0.1, shape=[num_classes]))
         lstm_layer_output = tf.reshape(
             lstm_layer_output, [-1, 2 * num_hidden_neurons])
-        # TODO(daniel): apply sigmoid?
+        # TODO(daniel): apply sigmoid or softmax?
         logits = tf.matmul(lstm_layer_output, W) + b
         batch_size = tf.shape(inputs)[0]
         logits = tf.reshape(logits, [batch_size, -1, num_classes])
@@ -320,30 +319,14 @@ class GraphTraining(GraphUtilities):
                     [self.error_rate, self.train_step], feed_dict=feed_dict)
 
 
-def _get_sets_and_alphabet(alphabet=ALPHABET):
-
-    if FLAGS.build_data <= 0:
-        corpora = load_corpora()
-        pickle.dump(corpora, open("tmp/corpora.pkl", "wb"), -1)
-
-    if FLAGS.build_data <= 1:
-        corpora = pickle.load(open("tmp/corpora.pkl", "rb"))
-        print("extract features from several corpora,"
-              "this may take a few minutes")
-        sets = corpora.convert_to_features_and_labels(alphabet)
-        pickle.dump(sets, open("tmp/sets.pkl", "wb"), -1)
-        pickle.dump(alphabet, open("tmp/alphabet.pkl", "wb"), -1)
-    else:
-        sets = pickle.load(open("tmp/sets.pkl", "rb"))
-
-    return sets, alphabet
-
-
 def main():
-    data, alphabet = _get_sets_and_alphabet()
+    samples, alphabet = get_sets_and_alphabet(
+        alphabet=ALPHABET,
+        load_cached_features=FLAGS.build_data > 1,
+        load_cached_corpus=FLAGS.build_data > 0)
     net = GraphTraining(alphabet=alphabet)
-    net.train(batch_train=get_trainings_batch_creator(data),
-              batch_tests=get_test_batches(data))
+    net.train(batch_train=get_trainings_batch_creator(samples),
+              batch_tests=get_test_batches(samples))
 
 if __name__ == "__main__":
     main()
