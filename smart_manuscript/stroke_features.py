@@ -42,8 +42,20 @@ class Ink:
     """
     _HAS_NO_DUBLICATES_OR_ZERO_GAPS = True
 
-    def __init__(self, strokes=[],
-                 check_duplicates_and_gaps=True):  # pylint: disable=W0102
+    def __init__(self, strokes=[],  # pylint: disable=W0102
+                 check_duplicates_and_gaps=True):
+        """ Remove dublicates points and bridges zero gaps
+
+        >>> strokes = [np.array([[0, 0], [0, 0], [1, 0]]),\
+                       np.array([[1, 0], [2, 0]]), np.array([[2, 1], [3, 1]])]
+        >>> ink = Ink(strokes)
+        >>> for stroke in ink.strokes: print(stroke)
+        [[ 0.  0.]
+         [ 1.  0.]
+         [ 2.  0.]]
+        [[ 2.  1.]
+         [ 3.  1.]]
+        """
         strokes = deepcopy(strokes)
 
         if (not hasattr(strokes, "_HAS_NO_DUBLICATES_OR_ZERO_GAPS") and
@@ -126,6 +138,19 @@ class Ink:
 
         return sum(stroke_length(stroke) for stroke in self)
 
+    @property
+    def part_length(self):
+        """
+        >>> strokes = [np.array([[0, 0], [1, 0]]),\
+                       np.array([[3, 0], [4, 0], [4, 1]])]
+        >>> ink = Ink(strokes)
+        >>> print(ink.part_length)
+        [ 0.  1.  3.  4.  5.]
+        """
+        deltas = self.concatenated_strokes[1:] - self.concatenated_strokes[:-1]
+        distances = np.cumsum(np.sqrt(np.sum(deltas**2, axis=1)))
+        return np.concatenate(([0], distances))
+
     def transform(self, transformation):
         self.concatenated_strokes = transformation * self.concatenated_strokes
 
@@ -184,7 +209,7 @@ class InkNormalization:
         self._transformation = Transformation.identity()
         self.__strokes_orig = deepcopy(self.ink)
         self.normalize_skew()
-        self.rotate_if_upside_down()
+        #self.rotate_if_upside_down()
         self.__strokes_skew = deepcopy(self.ink)
         self.normalize_slant()
         self.__strokes_slant = deepcopy(self.ink)
@@ -232,14 +257,32 @@ class InkNormalization:
         Args:
             strokes (Ink): ink to normalize
         """
+        part_length = self.ink.part_length
+        a, b = np.polyfit(part_length, self.ink.concatenated_strokes, 1)
+        self.has_been_well_normalized = np.linalg.norm(a) > 0.2
+        angle = np.arctan2(*a[::-1])
+
+        transformation = (Transformation.rotation(-angle) *
+                          Transformation.translation(*(-b)))
+        self._transform(transformation)
+
+    def normalize_skew_old(self):
+        """ normalize skew by an linear fit
+
+        Args:
+            strokes (Ink): ink to normalize
+        """
         # TODO: only if long enough
         #TODO(daniel): resampling in advance
+
+
         cov = np.cov(self.ink.concatenated_strokes.transpose())
         mean = np.mean(self.ink.concatenated_strokes, axis=0)
         eigvals, eigvecs = np.linalg.eig(cov)
         eigval, eigvec = sorted(zip(eigvals, eigvecs))[1]
         angle = -np.arctan2(*eigvec[::-1])
-
+        self.has_been_well_normalized = max(eigvals) / min(eigvals) > 3
+        print(eigvals)
         transformation = (Transformation.rotation(-angle) *
                           Transformation.translation(*(-mean)))
         self._transform(transformation)
@@ -266,7 +309,7 @@ class InkNormalization:
 
 
     def normalize_baseline(self):
-        """ normalize baseline to y = 0 and mean line / height to y = 1
+        """ normalize baseline to y = 0 and mean line (height) to y = 1
 
         Fits the local minima (maxima) to the baseline (mean line), resp.
 
@@ -277,40 +320,34 @@ class InkNormalization:
         minima = []
         maxima = []
         for stroke in self.ink:
+
             # TODO(dv): avoid several consecutives extrema
             #           (e.g. when maximum is divide)
-            idx_min = argrelextrema(stroke[:, 1], np.less_equal)[0]
-            idx_max = argrelextrema(stroke[:, 1], np.greater_equal)[0]
-            if len(stroke) == 1:
-                idx_max = np.concatenate([[0], idx_max])
-                idx_min = np.concatenate([[0], idx_min])
-            else:
-                if stroke[0, 1] < stroke[1, 1]:
-                    idx_min = np.concatenate([[0], idx_min])
-                else:
-                    idx_max = np.concatenate([[0], idx_max])
-                if stroke[-1, 1] < stroke[-2, 1]:
-                    idx_min = np.concatenate([idx_min, [-1]])
-                else:
-                    idx_max = np.concatenate([idx_max, [-1]])
+            ys = stroke[:, 1]
+            idx_min = argrelextrema(np.concatenate([ys, [np.inf]]),
+                                    np.less_equal, mode='wrap')[0]
+            idx_max = argrelextrema(np.concatenate([ys, [-np.inf]]),
+                                    np.greater_equal, mode='wrap')[0]
             minima.extend(stroke[idx_min])
             maxima.extend(stroke[idx_max])
         minima, maxima = np.array(minima), np.array(maxima)
-        minima = minima[minima[:, 1] <= 0]
-        maxima = maxima[maxima[:, 1] >= 0]
-        assert (minima.size and maxima.size)
 
-        BASELINE = np.average(minima[:, 1])
-        MEANLINE = np.average(maxima[:, 1])
-        HEIGHT = MEANLINE - BASELINE
-        if HEIGHT == 0: HEIGHT = 1
+        if min(minima[:, 1]) == max(maxima[:, 1]):  # a horizontal line
+                                                    # (close to y = 0)
+            HEIGHT = 1
+            BASELINE = - 0.5
+        else:
+            minima = minima[minima[:, 1] <= 0]
+            maxima = maxima[maxima[:, 1] >= 0]
+            assert (minima.size and maxima.size)
+            BASELINE = np.average(minima[:, 1])
+            MEANLINE = np.average(maxima[:, 1])
+            HEIGHT = MEANLINE - BASELINE
+            assert HEIGHT >= 0
         transformation = (Transformation.scale(1 / HEIGHT) *
                           Transformation.translation(0, - BASELINE))
-        # else:
-        #     transformation = Transformation.translation(0, - BASELINE + .5)
 
         self._transform(transformation)
-
         self.__minima = transformation * minima
         self.__maxima = transformation * maxima
 
@@ -350,14 +387,16 @@ class InkFeatures:
         """ Provide a list of features characterizing the set of strokes
 
         Args:
-            strokes (Ink): ink to normalize
+            strokes (Ink): the ink
         """
         # Remove the follwoing three lines
         assert hasattr(ink, "_HAS_NO_DUBLICATES_OR_ZERO_GAPS")
         assert len(ink.concatenated_strokes) == len(Ink(ink.strokes).concatenated_strokes)
-        ink = Ink(ink.strokes)  # remove duplicated
+        # ink = Ink(ink.strokes)  # remove duplicated
         if normalize:
-            ink = InkNormalization(ink).ink
+            norm = InkNormalization(ink)
+            self.has_been_well_normalized = norm.has_been_well_normalized
+            ink = norm.ink
         self.INK = ink
 
     @staticmethod
@@ -375,9 +414,6 @@ class InkFeatures:
         axes.plot([min(x), max(x)], [1, 1], 'k:')
         axes.plot(x, y, "g-")
         axes.set_aspect('equal')
-
-    def has_been_well_normalized(self):
-        return self.INK.width_height_ratio > 2
 
     @cached_property
     def _splines(self):
@@ -832,27 +868,13 @@ class InkFeatures:
         return features
 
 
-def main_iamondb():
-    from tensorflow.python.platform.app import flags
-    from inkml import InkML
-
-    FLAGS = flags.FLAGS
-    inkml = InkML(FLAGS.inkml_file)
-
-
-    #for _, line in lines:
-    #line.plot_pylab()
-    #page.plot_pylab()
-    #plt.show()
-
-    #import random
-    #
+def show_normalizations(corpus):
 
     def devided_in_chunks(sequence, size):
         return (sequence[pos:pos + size]
                 for pos in range(0, len(sequence), size))
 
-    for j, sample in enumerate(devided_in_chunks(inkml.lines, 4)):
+    for j, sample in enumerate(devided_in_chunks(corpus, 4)):
         _, axes_arr = plt.subplots(len(sample), 2)
         for i, (transcription, ink) in enumerate(sample):
             ink.plot_pylab(axes_arr[i, 0], transcription + " " + str(4*j + i))
@@ -862,38 +884,62 @@ def main_iamondb():
         plt.show()
 
 
-def main():
-    from handwritten_vector_graphic import load
-    from tensorflow.python.platform.app import flags
-    FLAGS = flags.FLAGS
-    flags.DEFINE_string(
-        "file", "sample_text/The_Zen_of_Python.pdf",
-        "file to show features (either PDF or SVG)")
-    flags.DEFINE_integer(
-        "line_num", 0,
-        "select line number")
-    flags.DEFINE_boolean(
-        "iamondb", False, "use examples from the IAMonDo-db-1")
-
-    ink_page = load(FLAGS.file)
-    ink = ink_page.lines[FLAGS.line_num]
-    plot_all_steps(ink)
-
-
 def plot_all_steps(ink):
     normalized = InkNormalization(ink)
     normalized.plot()
     strokes_features = InkFeatures(normalized.ink, normalize=False)
     strokes_features.plot_all()
 
-if __name__ == "__main__":
+
+def main():
+
+    # for _, line in lines:
+    # line.plot_pylab()
+    # page.plot_pylab()
+    # plt.show()
+    #
+    # import random
+    #
+
     from tensorflow.python.platform.app import flags
+    from train_utils import Corpus
     FLAGS = flags.FLAGS
+    flags.DEFINE_integer("num", 0, "select line number")
+    flags.DEFINE_boolean(
+        "iamondb", False, "use examples from the IAMonDo-db-1")
+    flags.DEFINE_boolean(
+        "all_steps", True, "")
+    flags.DEFINE_string(
+        "file", "sample_text/The_Zen_of_Python.pdf",
+        "file to show features (either PDF or SVG)")
     flags.DEFINE_string("inkml_file", "data/IAMonDo-db-1.0/003.inkml",
                         "path to an inkml-file")
-    from inkml import InkML
+    if FLAGS.iamondb:
+        from inkml import InkML
+        inkml = InkML(FLAGS.inkml_file)
+        corpus = inkml.words
+    else:
+        from handwritten_vector_graphic import load
+        corpus = Corpus.from_pdf(FLAGS.file)
+        #ink = ink_page.lines[FLAGS.line_num]
+        #corpus
 
-    FLAGS = flags.FLAGS
-    inkml = InkML(FLAGS.inkml_file)
-    plot_all_steps(inkml.lines[16][1])
-    #main_iamondb()
+    if FLAGS.all_steps:
+        plot_all_steps(corpus[FLAGS.num][1])
+    else:
+        show_normalizations(corpus)
+
+if __name__ == "__main__":
+    # import doctest
+    # doctest.testmod()
+    # exit()
+    main()
+
+
+    # FLAGS = flags.FLAGS
+    # inkml = InkML(FLAGS.inkml_file)
+    # for i in range(30):
+    #     print (i,inkml.words[i][0])
+    # #exit()
+    # plot_all_steps(inkml.words[29][1])
+    # main_iamondb()
