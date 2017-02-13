@@ -1,8 +1,9 @@
 *.pyc
 data/*
-!data/.gitkeep 
+!data/.gitkeep
 __pycache__/
 graphs/*
-!graphs/.gitkeep 
+!graphs/.gitkeep
 tmp/*
-!tmp/.gitkeep 
+!tmp/.gitkeep
+more_samples/*
