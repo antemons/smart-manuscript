@@ -335,10 +335,9 @@ class InkNormalization:
         if min(minima[:, 1]) == max(maxima[:, 1]):  # a horizontal line
                                                     # (close to y = 0)
             HEIGHT = 1
-            BASELINE = - 0.5
         else:
-            minima = minima[minima[:, 1] <= 0]
-            maxima = maxima[maxima[:, 1] >= 0]
+            minima = minima[minima[:, 1] <= 10**-12]
+            maxima = maxima[maxima[:, 1] >= -10**-12]
             assert (minima.size and maxima.size)
             BASELINE = np.average(minima[:, 1])
             MEANLINE = np.average(maxima[:, 1])
@@ -346,8 +345,11 @@ class InkNormalization:
             assert HEIGHT >= 0
         transformation = (Transformation.scale(1 / HEIGHT) *
                           Transformation.translation(0, - BASELINE))
+        # else:
+        #     transformation = Transformation.translation(0, - BASELINE + .5)
 
         self._transform(transformation)
+
         self.__minima = transformation * minima
         self.__maxima = transformation * maxima
 
