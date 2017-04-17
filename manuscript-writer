@@ -1,0 +1,4 @@
+#!/usr/bin/env python3
+
+from smart_manuscript.application import main
+main()

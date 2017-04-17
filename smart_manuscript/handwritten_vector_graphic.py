@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 """
     This file is part of Smart Manuscript.
@@ -24,11 +24,11 @@ from xml.dom import minidom
 import pylab as plt
 import numpy as np
 from svgpathtools import svg2paths
-from stroke_features import InkPage
 from os.path import basename
 import subprocess
 import re
-from utils import Transformation
+
+from .utils import Transformation
 
 
 __author__ = "Daniel Vorberg"
@@ -51,12 +51,12 @@ def load(filename):
     """
 
     if filename.endswith('.pdf') or filename.endswith('.PDF'):
-        strokes = _read_pdf(filename)
+        strokes, page_size = _read_pdf(filename)
     elif filename.endswith('.svg') or filename.endswith('.SVG'):
-        strokes = _read_svg(filename)
+        strokes, page_size = _read_svg(filename)
     else:
         raise Exception("file must be either PDF or SVG")
-    return strokes
+    return strokes, page_size
 
 
 def _read_svg(filename, is_handwritten=None):
@@ -103,13 +103,13 @@ def _read_svg(filename, is_handwritten=None):
         if "transform" in property_:
             transform = property_["transform"]
             if "matrix" in transform:
-                parameters_str = re.findall("matrix\((.+)\)", transform)[0]
+                parameters_str = re.findall(r"matrix\((.+)\)", transform)[0]
                 parameters = np.array(
                     [float(p) for p in parameters_str.split(",")])
-                stroke = Transformation(parameters[[0, 1, 4, 2, 3, 5]]) * stroke
-        stroke = Transformation([1, 0, 0, 0, -1, HEIGHT]) * stroke
+                stroke = Transformation(parameters[[0, 1, 4, 2, 3, 5]]) @ stroke
+        stroke = Transformation([1, 0, 0, 0, -1, HEIGHT]) @ stroke
         strokes.append(stroke)
-    return InkPage(strokes, page_size=(WIDTH, HEIGHT))
+    return strokes, (WIDTH, HEIGHT)
 
 
 def _pdf_to_svg_tmp(pdf_path):

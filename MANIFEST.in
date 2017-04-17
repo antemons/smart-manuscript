@@ -1,0 +1,6 @@
+include README.md
+include LICENSE
+include smart_manuscript/data/model/*
+include smart_manuscript/data/sample_text/*
+
+

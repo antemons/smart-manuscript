@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 """
     This file is part of Smart Manuscript.
@@ -27,11 +27,18 @@ from scipy import interpolate
 from scipy.signal import argrelextrema
 from scipy.optimize import minimize
 from copy import deepcopy
-from utils import Transformation, cached_property
+import warnings
+
+from .utils import Transformation, cached_property
+
+np.seterr(all="raise")
+warnings.simplefilter('error', np.RankWarning)
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
+
+__all__ = ["strokes_to_features", "NormalizationWarning"]
 
 
 class Ink:
@@ -40,15 +47,28 @@ class Ink:
         nested list strokes (float[L,2]), the (x,y)-points for each point in
         each stroke in each strokes
     """
-    _HAS_NO_DUBLICATES_OR_ZERO_GAPS = True
 
-    def __init__(self, strokes=[],  # pylint: disable=W0102
-                 check_duplicates_and_gaps=True):
-        """ Remove dublicates points and bridges zero gaps
+    def __init__(self, strokes=None, is_uncorrupted=False):
+        """ create Ink from strokes, consider use Ink.from_corrupted_stroke()
+        """
+        strokes = deepcopy(strokes)
+        if strokes is not None and strokes != []:
+            self._concatenated_strokes = np.concatenate(strokes)
+            sections = np.cumsum([len(s) for s in strokes])[:-1]
+            self.strokes = np.split(self._concatenated_strokes, sections)
+        else:
+            self._concatenated_strokes = np.array([])
+            self.strokes = []
+        self.is_uncorrupted = (is_uncorrupted or
+            (hasattr(strokes, "is_uncorrupted") and strokes.is_uncorrupted))
+
+    @classmethod
+    def from_corrupted_stroke(cls, strokes, resort=False):
+        """ Create Ink by removing dublicates points and bridges zero gaps
 
         >>> strokes = [np.array([[0, 0], [0, 0], [1, 0]]),\
                        np.array([[1, 0], [2, 0]]), np.array([[2, 1], [3, 1]])]
-        >>> ink = Ink(strokes)
+        >>> ink = Ink.from_corrupted_stroke(strokes)
         >>> for stroke in ink.strokes: print(stroke)
         [[ 0.  0.]
          [ 1.  0.]
@@ -58,21 +78,19 @@ class Ink:
         """
         strokes = deepcopy(strokes)
 
-        if (not hasattr(strokes, "_HAS_NO_DUBLICATES_OR_ZERO_GAPS") and
-                check_duplicates_and_gaps):
-            self._connect_gapless_strokes(strokes)
-            self._remove_dublicated_points(strokes)
+        if resort:
+            strokes = sorted(strokes, key=lambda x: np.mean(x[:, 0]))
 
-        if strokes:
-            self._concatenated_strokes = np.concatenate(strokes)
-            sections = np.cumsum([len(s) for s in strokes])[:-1]
-            self.strokes = np.split(self._concatenated_strokes, sections)
-        else:
-            self._concatenated_strokes = np.array([])
-            self.strokes = []
+        cls._connect_gapless_strokes(strokes)
+        cls._remove_dublicated_points(strokes)
+
+        return cls(strokes, is_uncorrupted=True)
+
+    def __str__(self):
+        return "Ink({})".format(str(self.strokes))
 
     def __deepcopy__(self, _):
-        return self.__class__(self.strokes, check_duplicates_and_gaps=False)
+        return self.__class__(self.strokes, is_uncorrupted=self.is_uncorrupted)
 
     def __getstate__(self):
         return self.strokes
@@ -100,11 +118,6 @@ class Ink:
                     stroke[j] = (stroke[j] + stroke[j+1]) / 2
                     stroke.pop(j+1)
             strokes[i] = np.array(stroke)
-
-        # def remove_dublicates_from_stroke(stroke):
-        #     return np.array([x for x, _ in groupby(stroke, tuple)])
-        # for i, stroke in enumerate(strokes):
-        #     strokes[i] = remove_dublicates_from_stroke(stroke)
 
     @staticmethod
     def _connect_gapless_strokes(strokes):
@@ -151,8 +164,24 @@ class Ink:
         distances = np.cumsum(np.sqrt(np.sum(deltas**2, axis=1)))
         return np.concatenate(([0], distances))
 
+    def get_extrema(self):
+        minima = []
+        maxima = []
+        for stroke in self:
+            # TODO(dv): avoid several consecutives extrema
+            #           (e.g. when maximum is divide)
+            ys = stroke[:, 1]
+            idx_min = argrelextrema(np.concatenate([ys, [np.inf]]),
+                                    np.less_equal, mode='wrap')[0]
+            idx_max = argrelextrema(np.concatenate([ys, [-np.inf]]),
+                                    np.greater_equal, mode='wrap')[0]
+            minima.extend(stroke[idx_min])
+            maxima.extend(stroke[idx_max])
+        minima, maxima = np.array(minima), np.array(maxima)
+        return minima, maxima
+
     def transform(self, transformation):
-        self.concatenated_strokes = transformation * self.concatenated_strokes
+        self.concatenated_strokes = transformation @ self.concatenated_strokes
 
     def plot_pylab(self, axes=None, transcription=None, auxiliary_lines=False,
                    hide_ticks=False):
@@ -173,16 +202,51 @@ class Ink:
     def __add__(self, other):
         return self.__class__(self.strokes + other.strokes)
 
+def gauss(x, mu, sigma):
+    return np.exp(- (x - mu)**2 / (2 * sigma**2)) / (sigma * np.sqrt(2 * np.pi))
+
+# class ExpectationMaximization:
+#     """ The EM-Algorithm
+#     """
+#
+#     def __init__(self, rel_frequency, sigma, initial_guess):
+#         self._rel_frequency = rel_frequency
+#         self._sigma = sigma
+#         self._initial_guess = initial_guess
+#
+#     def estimation(self, xs, means):
+#         p = np.array([[gauss(x, mu, self._sigma) * self._rel_frequency[i]
+#                        for i, mu in enumerate(means)]
+#                       for x in xs])
+#         return p / np.sum(p, axis=1)[:, None]
+#
+#     def maximation(self, xs, means, E):
+#         return np.sum(E * xs[:, None], axis=0) / np.sum(E, axis=0)
+#
+#     def __call__(self, xs):
+#         means = self._initial_guess
+#         while True:
+#             estimation = self.estimation(xs, means)
+#             old_means = means
+#             means = self.maximation(xs, means, estimation)
+#             if sum((old_means - means)**2) < 10**-9:
+#                 break
+#         return means
+#
+# get_baseline = ExpectationMaximization([.25, .25, .25, .25], 0.2,
+#                                        [-1, 0, 1, 2])
 
 class InkPage(Ink):
     """ Ink on a page """
 
-    def __init__(self, strokes, page_size=None):
-        super().__init__(strokes)
+    def __init__(self, strokes, page_size=None,
+                 is_uncorrupted=False):
+        super().__init__(strokes, is_uncorrupted=is_uncorrupted)
         self.page_size = page_size
 
     def __deepcopy__(self, _):
-        return self.__class__(self.strokes, page_size=self.page_size)
+        return type(self)(self.strokes, page_size=self.page_size,
+                          is_uncorrupted=self.is_uncorrupted)
 
     @cached_property
     def lines(self, min_seperation=None):  # TODO(daniel): remove min_seperation
@@ -197,118 +261,166 @@ class InkPage(Ink):
                                    min_seperation > stroke[0, 0])):
                 lines.append([])
             lines[-1].append(stroke)
-        return [Ink(line, check_duplicates_and_gaps=False) for line in lines]
+        return [Ink.from_corrupted_stroke(line) for line in lines]
 
+class NormalizationWarning(Warning):
+    pass
 
 class InkNormalization:
     """ normalize a stroke by slant, skew, baseline, height, and width
     """
 
-    def __init__(self, ink):
-        self.ink = deepcopy(ink)
-        self._transformation = Transformation.identity()
-        self.__strokes_orig = deepcopy(self.ink)
-        self.normalize_skew()
-        #self.rotate_if_upside_down()
-        self.__strokes_skew = deepcopy(self.ink)
-        self.normalize_slant()
-        self.__strokes_slant = deepcopy(self.ink)
-        self.normalize_baseline()
-        self.__strokes_baseline = deepcopy(self.ink)
-        self.normalize_width()
-        self.normalize_left()
-        self.__strokes_width = deepcopy(self.ink)
+    class TransformedInk(Ink):
+        """ A Ink which stores additionally all made transformations.
 
-    def plot(self):
+        Attributes:
+            global_transformation (Transformation):
+        """
+        def __init__(self, strokes, global_transformation=None,
+                     *args, **kwargs):
+            super().__init__(strokes, *args, **kwargs)
+            if global_transformation is None:
+                global_transformation = Transformation.identity()
+            self.global_transformation = global_transformation
+
+        def transform(self, transformation):
+            super().transform(transformation)
+            self.global_transformation = \
+                 transformation @ self.global_transformation
+            #print(self.global_transformation.matrix, name)
+            #raise NotImplementedError
+
+
+    def __call__(self, ink, skew_is_horizontal=False):
+        ink = self.TransformedInk(ink.strokes, is_uncorrupted=ink.is_uncorrupted)
+        if skew_is_horizontal:
+            self.normalize_mean(ink)
+        else:
+            self.normalize_skew_and_mean(ink)
+        self.normalize_slant(ink)
+        self.normalize_baseline(ink)
+        self.normalize_width(ink)
+        self.normalize_left(ink)
+        return ink
+
+
+    def plot(self, ink):
+        ink = self.TransformedInk(ink.strokes)
+        strokes_orig = deepcopy(ink)
+        self.normalize_skew_and_mean(ink)
+        strokes_skew = deepcopy(ink)
+        self.normalize_slant(ink)
+        strokes_slant = deepcopy(ink)
+        self.normalize_baseline(ink)
+        strokes_baseline = deepcopy(ink)
+        self.normalize_width(ink)
+        self.normalize_left(ink)
+        strokes_width = deepcopy(ink)
+
         _, axes = plt.subplots(5)
-        self.__strokes_orig.plot_pylab(axes[0], "original")
-        width = self.ink.boundary_box[1]
+        strokes_orig.plot_pylab(axes[0], "original")
+        width = ink.boundary_box[1]
         box = np.array([[0, 0], [width, 0], [width, 1], [0, 1]])
-        axes[0].scatter(*((~self._transformation) * box).transpose())
+        axes[0].scatter(*((~(ink.global_transformation)) @ box).transpose())
 
-        self.__strokes_skew.plot_pylab(axes[1], "normalize skew")
-        axes[1].plot(self.__strokes_skew.boundary_box[:2], [0, 0], 'k:')
+        strokes_skew.plot_pylab(axes[1], "normalize skew")
+        axes[1].plot(strokes_skew.boundary_box[:2], [0, 0], 'k:')
 
-        self.__strokes_slant.plot_pylab(axes[2], "normalize slant")
+        strokes_slant.plot_pylab(axes[2], "normalize slant")
 
-        self.__strokes_baseline.plot_pylab(axes[3], "normalize baseline",
-                                           auxiliary_lines=True)
-        axes[3].scatter(*self.__minima.transpose(), c='b', edgecolors='face')
-        axes[3].scatter(*self.__maxima.transpose(), c='r', edgecolors='face')
+        strokes_baseline.plot_pylab(axes[3], "normalize baseline",
+                                    auxiliary_lines=True)
+        minima, maxima = strokes_baseline.get_extrema()
+        axes[3].scatter(*minima.transpose(), c='b', edgecolors='face')
+        axes[3].scatter(*maxima.transpose(), c='r', edgecolors='face')
 
-        self.__strokes_width.plot_pylab(axes[4], "normalize width",
-                                        auxiliary_lines=True)
+        strokes_width.plot_pylab(axes[4], "normalize width",
+                                 auxiliary_lines=True)
         plt.show()
 
-    def _transform(self, transformation):
-        self._transformation = transformation * self._transformation
-        self.ink.transform(transformation)
 
-    def rotate_if_upside_down(self):
-        a, _ = np.polyfit(np.arange(len(self.ink.concatenated_strokes)),
-                          self.ink.concatenated_strokes[:, 0], 1)
-        if a < 0:
-            transformation = Transformation.rotation(np.pi)
-            self._transform(transformation)
+    @staticmethod
+    def normalize_mean(ink):
+        mean = np.mean(ink.concatenated_strokes, axis=0)
+        transformation = Transformation.translation(*(-mean))
+        ink.transform(transformation)
 
-    def normalize_skew(self):
+    @classmethod
+    def normalize_skew_and_mean(cls, ink):
         """ normalize skew by an linear fit
 
         Args:
             strokes (Ink): ink to normalize
         """
-        part_length = self.ink.part_length
-        a, b = np.polyfit(part_length, self.ink.concatenated_strokes, 1)
-        self.has_been_well_normalized = np.linalg.norm(a) > 0.2
+        part_length = ink.part_length
+
+        try:
+            a, b = np.polyfit(part_length, ink.concatenated_strokes, 1)
+        except (ValueError, np.RankWarning, RuntimeWarning, FloatingPointError):
+            # TODO(DV): single dot need special handling
+            raise NormalizationWarning("Single dot is not Normalizeable")
+
+        if np.linalg.norm(a) < 0.1:
+            warnings.warn(NormalizationWarning(
+                "Skew detection is ambigous ({})".format(np.linalg.norm(a))))
+
         angle = np.arctan2(*a[::-1])
 
-        transformation = (Transformation.rotation(-angle) *
-                          Transformation.translation(*(-b)))
-        self._transform(transformation)
+        if np.linalg.norm(a) < 0.3:
+            angle = round(angle/(np.pi/2))*np.pi/2
+            transformation = Transformation.rotation(-angle)
+            ink.transform(transformation)
+            cls.normalize_mean(ink)
+        else:
+            transformation = (Transformation.rotation(-angle) @
+                              Transformation.translation(*(-b)))
+            ink.transform(transformation)
 
-    def normalize_skew_old(self):
-        """ normalize skew by an linear fit
+    # def normalize_skew_old(self):
+    #     """ normalize skew by an linear fit
+    #
+    #     Args:
+    #         strokes (Ink): ink to normalize
+    #     """
+    #     # TODO: only if long enough
+    #     #TODO(daniel): resampling in advance
+    #
+    #
+    #     cov = np.cov(self.ink.concatenated_strokes.transpose())
+    #     mean = np.mean(self.ink.concatenated_strokes, axis=0)
+    #     eigvals, eigvecs = np.linalg.eig(cov)
+    #     eigval, eigvec = sorted(zip(eigvals, eigvecs))[1]
+    #     angle = -np.arctan2(*eigvec[::-1])
+    #     self.has_been_well_normalized = max(eigvals) / min(eigvals) > 3
+    #     print(eigvals)
+    #     transformation = (Transformation.rotation(-angle) *
+    #                       Transformation.translation(*(-mean)))
+    #     self._transform(transformation)
 
-        Args:
-            strokes (Ink): ink to normalize
-        """
-        # TODO: only if long enough
-        #TODO(daniel): resampling in advance
-
-
-        cov = np.cov(self.ink.concatenated_strokes.transpose())
-        mean = np.mean(self.ink.concatenated_strokes, axis=0)
-        eigvals, eigvecs = np.linalg.eig(cov)
-        eigval, eigvec = sorted(zip(eigvals, eigvecs))[1]
-        angle = -np.arctan2(*eigvec[::-1])
-        self.has_been_well_normalized = max(eigvals) / min(eigvals) > 3
-        print(eigvals)
-        transformation = (Transformation.rotation(-angle) *
-                          Transformation.translation(*(-mean)))
-        self._transform(transformation)
-
-    def normalize_left(self):
+    @staticmethod
+    def normalize_left(ink):
         """ set the leftmost point to x = 0
         """
-        min_x = self.ink.boundary_box[0]
+        min_x = ink.boundary_box[0]
         transformation = Transformation.translation(- min_x, 0)
-        self._transform(transformation)
+        ink.transform(transformation)
 
-    def normalize_slant(self):
+    @staticmethod
+    def normalize_slant(ink):
         """ normalize the slant
         """
 
-        def tilted_ink_length(angle):
-            ink = deepcopy(self.ink)
+        def tilted_ink_length(ink, angle):
+            ink = deepcopy(ink)
             ink.transform(Transformation.shear(y_angle=angle))
             return ink.length
 
-        angle = minimize(tilted_ink_length, 0).x
+        angle = minimize(lambda a: tilted_ink_length(ink, a), 0).x
         transformation = Transformation.shear(y_angle=angle)
-        self._transform(transformation)
+        ink.transform(transformation)
 
-
-    def normalize_baseline(self):
+    @staticmethod
+    def normalize_baseline(ink):
         """ normalize baseline to y = 0 and mean line (height) to y = 1
 
         Fits the local minima (maxima) to the baseline (mean line), resp.
@@ -317,109 +429,120 @@ class InkNormalization:
             strokes (Ink): ink to normalize
         """
 
-        minima = []
-        maxima = []
-        for stroke in self.ink:
-
-            # TODO(dv): avoid several consecutives extrema
-            #           (e.g. when maximum is divide)
-            ys = stroke[:, 1]
-            idx_min = argrelextrema(np.concatenate([ys, [np.inf]]),
-                                    np.less_equal, mode='wrap')[0]
-            idx_max = argrelextrema(np.concatenate([ys, [-np.inf]]),
-                                    np.greater_equal, mode='wrap')[0]
-            minima.extend(stroke[idx_min])
-            maxima.extend(stroke[idx_max])
-        minima, maxima = np.array(minima), np.array(maxima)
-
+        minima, maxima = ink.get_extrema()
+        try:
+            min(minima[:, 1]) == max(maxima[:, 1])
+        except IndexError:
+            import pdb; pdb.set_trace()
+            HEIGHT = 1
+            BASELINE = 0
         if min(minima[:, 1]) == max(maxima[:, 1]):  # a horizontal line
                                                     # (close to y = 0)
             HEIGHT = 1
+            BASELINE = 0
         else:
             minima = minima[minima[:, 1] <= 10**-12]
             maxima = maxima[maxima[:, 1] >= -10**-12]
-            assert (minima.size and maxima.size)
+            assert minima.size and maxima.size, (minima, maxima, ink)
             BASELINE = np.average(minima[:, 1])
             MEANLINE = np.average(maxima[:, 1])
             HEIGHT = MEANLINE - BASELINE
             assert HEIGHT >= 0
-        transformation = (Transformation.scale(1 / HEIGHT) *
+        transformation = (Transformation.scale(1 / HEIGHT) @
                           Transformation.translation(0, - BASELINE))
-        # else:
-        #     transformation = Transformation.translation(0, - BASELINE + .5)
+        ink.transform(transformation)
 
-        self._transform(transformation)
+        if ink.boundary_box[2] < -4:
+            warnings.warn(NormalizationWarning("Baseline normalization failed"))
 
-        self.__minima = transformation * minima
-        self.__maxima = transformation * maxima
+        if ink.boundary_box[3] > 4:
+            warnings.warn(NormalizationWarning("Baseline normalization failed"))
 
-    def normalize_width(self):
+
+    # def normalize_baseline_advanced(self):
+    #     minima, maxima = self.ink.get_extrema()
+    #     _, BASELINE, MEANLINE, _ = \
+    #         get_baseline(np.concatenate([minima, maxima])[:, 1])
+    #     HEIGHT = MEANLINE - BASELINE
+    #     transformation = (Transformation.scale(1 / HEIGHT) *
+    #                       Transformation.translation(0, - BASELINE))
+    #     self._transform(transformation)
+
+    @staticmethod
+    def normalize_width(ink):
         """ normalize the width by using the average width between two
             intersections with line between base and mean line
 
         Args:
             strokes (Ink): ink to normalize
         """
-        intersections = 0
-        for stroke in self.ink:
-            is_below = stroke[:, 1] < 0.5
-            is_below_merged = [x for x, _ in groupby(is_below)]
-            intersections += len(is_below_merged) - 1
 
-        # TODO(dv): replace definition before training next graph
-        # is_below = strokes.concatenated_strokes[:, 1] < 0.5
-        # intersections = len([x for x, _ in groupby(is_below)])
+        is_below = ink.concatenated_strokes[:, 1] < 0.5
+        intersections = len([x for x, _ in groupby(is_below)])
 
-        min_x, max_x, _, _ = self.ink.boundary_box
+        min_x, max_x, _, _ = ink.boundary_box
         width = max_x - min_x
-        scale_width = intersections / (2 * width) if width else 1
+
+        if (intersections >= 2) and width:
+            scale_width = intersections / (4 * width)
+        else:
+            scale_width = 1
         transformation = Transformation.scale((scale_width, 1))
-        self._transform(transformation)
+        ink.transform(transformation)
+
+normalized_ink = InkNormalization()
+
+
+warnings.simplefilter('always', NormalizationWarning)
+
+
 
 
 class InkFeatures:
     """ Generates features characterizing the ink
     """
 
-    NUM_FEATURES = 14
-    DOTS_PER_UNIT = 5
-    RDP_EPSILON = 0.02
+    NUM_FEATURES = 15
+    DOTS_PER_UNIT = 8
+    # RDP_EPSILON = 0.02
+    EPSILON = 10**-8
 
-    def __init__(self, ink, normalize=True):
+    def __init__(self, ink):
         """ Provide a list of features characterizing the set of strokes
 
         Args:
             strokes (Ink): the ink
         """
-        # Remove the follwoing three lines
-        assert hasattr(ink, "_HAS_NO_DUBLICATES_OR_ZERO_GAPS")
-        assert len(ink.concatenated_strokes) == len(Ink(ink.strokes).concatenated_strokes)
-        # ink = Ink(ink.strokes)  # remove duplicated
-        if normalize:
-            norm = InkNormalization(ink)
-            self.has_been_well_normalized = norm.has_been_well_normalized
-            ink = norm.ink
-        self.INK = ink
+        if not ink.is_uncorrupted:
+            raise ValueError("ink must be uncorrupted")
+        #if normalize:
+        #    norm = InkNormalization(ink)
+        #    ink = norm.ink
+        self._ink = ink
 
-    @staticmethod
-    def plot_features(features, transcription=None, axes=None):
-        """ show the strokes (only from the features)
-        """
-        x = np.cumsum(features[:, 11])
-        y = features[:, 1]
+    @classmethod
+    def from_features(cls, features):
+        ink_features = cls(Ink.from_corrupted_stroke([]))
+        ink_features._cached_x_low_pass_filtered = features[:, 0]
+        ink_features._cached_x_position = features[:, 1]
+        ink_features._cached_y_position = features[:, 2]
+        ink_features._cached_pressure = features[:, 3:5]
+        ink_features._cached_radius_normalized = features[:, 5]
+        ink_features._cached_writing_direction = features[:, 6:8]
+        ink_features._cached__rough_tangent = features[:, 8:10]
+        ink_features._cached_encased = features[:, 10:12]
+        ink_features._cached_delta_x_extended = features[:, 12]
+        ink_features._cached_delta_y_extended = features[:, 13]
+        ink_features._cached_intersection = features[:, 14]
+        return ink_features
 
-        if axes is None:
-            axes = plt.axes()
-        if transcription is not None:
-            axes.set_title(transcription)
-        axes.plot([min(x), max(x)], [0, 0], 'k:')
-        axes.plot([min(x), max(x)], [1, 1], 'k:')
-        axes.plot(x, y, "g-")
-        axes.set_aspect('equal')
+    @classmethod
+    def ink_to_features(cls, ink):
+        return cls(ink).features
 
     @cached_property
     def _splines(self):
-        return [self._create_spline(stroke) for stroke in self.INK]
+        return [self._create_spline(stroke) for stroke in self._ink]
 
     @cached_property
     def _knots(self):
@@ -507,7 +630,7 @@ class InkFeatures:
     def _plot_orig_strokes(self, axes):
         axes.set_aspect('equal')
         axes.set_title("orig_strokes")
-        for stroke in self.INK:
+        for stroke in self._ink:
             axes.plot(stroke[:, 0], stroke[:, 1], "bo")
 
     def plot_all(self):
@@ -519,7 +642,7 @@ class InkFeatures:
         self._plot_orig_strokes(subplots[0, 0])
         self._plot_encased(subplots[1, 0])
         self._plot_intersection(subplots[2, 0])
-        self._plot_curvature(subplots[3, 0])
+        #self._plot_curvature(subplots[3, 0])
         self._plot_pressure(subplots[0, 1])
         plt.show()
 
@@ -564,7 +687,7 @@ class InkFeatures:
             self.pos_between = pos_between
             dpos_between = pos_between[1:]-pos_between[:-1]
             dpos_between = dpos_between /\
-                (np.sum(dpos_between**2, axis=1)**0.5)[:, np.newaxis]
+                (self.EPSILON + np.sum(dpos_between**2, axis=1)**0.5)[:, np.newaxis]
             rough_tangent += dpos_between.tolist()
         return np.array(rough_tangent)
 
@@ -582,25 +705,25 @@ class InkFeatures:
         u = np.linspace(0, len_of_spline, knots_of_spline)
         return u
 
-    def _get_knots_rdp(self, spline):
-        # TODO: use shapely.geometry.simplify instead of rdp
-        # this function is unsed (replaced by _get_knots_equidistant)
-        from rdp import rdp
-        u = np.linspace(0, spline[0][-1], max(2, 100*spline[0][-1]))
-        stroke = np.array(interpolate.splev(u, spline)).transpose()
-        intrpl_stroke = rdp(stroke, epsilon=self.RDP_EPSILON)
-        intrpl_stroke_args = [
-            (stroke[:, 0]+1j*stroke[:, 1]).tolist().index(dot[0]+1j*dot[1])
-            for dot in intrpl_stroke]
-        return u[intrpl_stroke_args]
+    # def _get_knots_rdp(self, spline):
+    #     # TODO: use shapely.geometry.simplify instead of rdp
+    #     # this function is unsed (replaced by _get_knots_equidistant)
+    #     from rdp import rdp
+    #     u = np.linspace(0, spline[0][-1], max(2, 100*spline[0][-1]))
+    #     stroke = np.array(interpolate.splev(u, spline)).transpose()
+    #     intrpl_stroke = rdp(stroke, epsilon=self.RDP_EPSILON)
+    #     intrpl_stroke_args = [
+    #         (stroke[:, 0]+1j*stroke[:, 1]).tolist().index(dot[0]+1j*dot[1])
+    #         for dot in intrpl_stroke]
+    #     return u[intrpl_stroke_args]
 
-    @property
+    @cached_property
     def y_position(self):
         """ y-coordinate
         """
         return self._connected_stroke[:, 1]
 
-    @property
+    @cached_property
     def x_position(self):
         """ x-coordinate
         """
@@ -639,8 +762,8 @@ class InkFeatures:
     def _tangent(self):
         """ normalized slope
         """
-        return (self._stroke_der /
-                np.sum(self._stroke_der**2, axis=1)[:, np.newaxis]**0.5)
+        return (self._stroke_der / (self.EPSILON +
+            np.sum(self._stroke_der**2, axis=1))[:, np.newaxis]**0.5)
 
     @cached_property
     def radius_of_curvature(self):
@@ -648,7 +771,8 @@ class InkFeatures:
         """
         with np.errstate(divide='ignore'):
             ret = (np.sum(self._stroke_der**2, axis=1)**(3/2) /
-                   (self._stroke_der[:, 0] * self._stroke_cur[:, 1] -
+                   (self.EPSILON +
+                    self._stroke_der[:, 0] * self._stroke_cur[:, 1] -
                     self._stroke_der[:, 1] * self._stroke_cur[:, 0]))
         return ret
 
@@ -725,7 +849,7 @@ class InkFeatures:
         """
         low_pass = np.zeros_like(self.x_position)
         begin = 0
-        for i, knots in enumerate(self._knots):
+        for knots in self._knots:
             end = begin + len(knots)
             a, b = np.polyfit(
                 self._length_along[begin:end], self.x_position[begin:end], 1)
@@ -851,8 +975,9 @@ class InkFeatures:
             array[N, NUM_FEATURES] of float: the features
         """
         features = np.column_stack([
-            self.x_low_pass_filtered,
+            self.x_position,
             self.y_position,
+            self.x_low_pass_filtered,
             self.pressure[:, 0],
             self.pressure[:, 1],
             self.radius_normalized,
@@ -869,62 +994,84 @@ class InkFeatures:
         assert self.NUM_FEATURES == features.shape[1]
         return features
 
+def strokes_to_features(strokes, normalize=True, skew_is_horizontal=False, resort=False):
+    ink = Ink.from_corrupted_stroke(strokes, skew_is_horizontal)
+    if normalize:
+        ink = normalized_ink(ink, skew_is_horizontal=skew_is_horizontal)
+    features = InkFeatures.ink_to_features(ink)
+    return features
 
-def show_normalizations(corpus):
+def plot_features(features, transcription=None, axes=None):
+    """ show the strokes (only from the features)
+    """
+    x = features[:, 0]
+    y = features[:, 1]
 
-    def devided_in_chunks(sequence, size):
-        return (sequence[pos:pos + size]
-                for pos in range(0, len(sequence), size))
-
-    for j, sample in enumerate(devided_in_chunks(corpus, 4)):
-        _, axes_arr = plt.subplots(len(sample), 2)
-        for i, (transcription, ink) in enumerate(sample):
-            ink.plot_pylab(axes_arr[i, 0], transcription + " " + str(4*j + i))
-            normalize_ink = InkNormalization(ink).ink
-            normalize_ink.plot_pylab(
-                axes_arr[i, 1], auxiliary_lines=True, hide_ticks=False)
-        plt.show()
-
-
-def plot_all_steps(ink):
-    normalized = InkNormalization(ink)
-    normalized.plot()
-    strokes_features = InkFeatures(normalized.ink, normalize=False)
-    strokes_features.plot_all()
-
+    if axes is None:
+        axes = plt.axes()
+    if transcription is not None:
+        axes.set_title(transcription)
+    axes.plot([min(x), max(x)], [0, 0], 'k:')
+    axes.plot([min(x), max(x)], [1, 1], 'k:')
+    axes.plot(x, y, "g-")
+    axes.set_aspect('equal')
+    # tmp = InkFeatures.from_features(features)
+    # tmp.plot_all()
 
 def main():
 
-    # for _, line in lines:
-    # line.plot_pylab()
-    # page.plot_pylab()
-    # plt.show()
-    #
-    # import random
-    #
+    def show_normalizations(corpus):
+
+        def devided_in_chunks(sequence, size):
+            return (sequence[pos:pos + size]
+                    for pos in range(0, len(sequence), size))
+
+        for j, sample in enumerate(devided_in_chunks(corpus, 4)):
+            _, axes_arr = plt.subplots(len(sample), 2)
+            for i, (transcription, ink) in enumerate(sample):
+                ink.plot_pylab(axes_arr[i, 0], transcription + " " + str(4*j + i))
+                normalized_ink(ink).plot_pylab(
+                    axes_arr[i, 1], auxiliary_lines=True, hide_ticks=False)
+            plt.show()
+
+
+    def plot_all_steps(strokes):
+        ink = Ink.from_corrupted_stroke(strokes)
+        normalized_ink.plot(ink)
+        ink = normalized_ink(ink)
+        strokes_features = InkFeatures(ink)
+        strokes_features.plot_all()
+
+
 
     from tensorflow.python.platform.app import flags
-    from train_utils import Corpus
+    from corpus import Corpus
     FLAGS = flags.FLAGS
     flags.DEFINE_integer("num", 0, "select line number")
-    flags.DEFINE_boolean(
-        "iamondb", False, "use examples from the IAMonDo-db-1")
+    flags.DEFINE_string(
+        "source", "sample",
+        "[sample, iamondb, ibmub] draw examples from IAMonDo-db-1 or IBM_UB_1 "
+        "or use the sample")
     flags.DEFINE_boolean(
         "all_steps", True, "")
     flags.DEFINE_string(
         "file", "sample_text/The_Zen_of_Python.pdf",
         "file to show features (either PDF or SVG)")
-    flags.DEFINE_string("inkml_file", "data/IAMonDo-db-1.0/003.inkml",
-                        "path to an inkml-file")
-    if FLAGS.iamondb:
-        from inkml import InkML
-        inkml = InkML(FLAGS.inkml_file)
-        corpus = inkml.words
-    else:
-        from handwritten_vector_graphic import load
+
+    if FLAGS.source == "sample":
         corpus = Corpus.from_pdf(FLAGS.file)
-        #ink = ink_page.lines[FLAGS.line_num]
-        #corpus
+    elif FLAGS.source == "iamondb":
+        from corpus_iam import IAMonDo
+        inkml = IAMonDo("data/IAMonDo-db-1.0/002a.inkml")
+        corpus = Corpus((segment.transcription, Ink(segment.ink))
+                        for segment in inkml.get_segments(IAMonDo.TEXTLINE))
+    elif FLAGS.source == "ibmub":
+        from corpus_ibm import IBMub
+        inkml = IBMub("data/IBM_UB_1/query/OALquery_60.inkml")
+        corpus = Corpus((segment.transcription, Ink(segment.ink))
+                        for segment in inkml.get_segments())
+    else:
+        raise ValueError
 
     if FLAGS.all_steps:
         plot_all_steps(corpus[FLAGS.num][1])
@@ -932,16 +1079,4 @@ def main():
         show_normalizations(corpus)
 
 if __name__ == "__main__":
-    # import doctest
-    # doctest.testmod()
-    # exit()
     main()
-
-
-    # FLAGS = flags.FLAGS
-    # inkml = InkML(FLAGS.inkml_file)
-    # for i in range(30):
-    #     print (i,inkml.words[i][0])
-    # #exit()
-    # plot_all_steps(inkml.words[29][1])
-    # main_iamondb()

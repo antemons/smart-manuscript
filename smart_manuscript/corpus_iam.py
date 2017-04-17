@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 """
     This file is part of Smart Manuscript.
@@ -20,15 +20,15 @@
     along with Smart Manuscript.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from inkml_new import InkML, TraceView
+
 from tensorflow.python.platform.app import flags
-import numpy as np
 import pylab as plt
 import os
-from corpus import Corpus
-from stroke_features import Ink
-from utils import Bunch
+import glob
 from copy import deepcopy
+
+from .corpus import Corpus, Corpora, TranscriptedStrokes
+from .inkml import InkML, TraceView
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
@@ -78,9 +78,14 @@ class IAMonDo(InkML):
         def condition(elem):
             return self.condition(elem, type_)
         for textline in self._root.search(condition):
-            yield Bunch(
-                transcription=textline.annotation[self.TRANSCRIPTION],
-                ink=self.ink(textline._trace_data_refs()))
+            try:
+                transcription = textline.annotation[self.TRANSCRIPTION]
+            except KeyError:
+                print("Warning: transcription not found, skipping")
+                continue
+            yield TranscriptedStrokes(
+                transcription=transcription,
+                strokes=self.ink(textline._trace_data_refs()))
 
     @property
     def pagesize(self):
@@ -96,17 +101,26 @@ class IAMonDo(InkML):
         axes.axis([xmin, xmax, ymin, ymax])
 
 
-def load(iam_on_db_path):
-    corpara_word = []
-    corpara_line = []
-    for i in range(5):
-        word_corpus, line_corpus = _import_set(iam_on_db_path, '%i.set' % i)
-        corpara_word.append(word_corpus)
-        corpara_line.append(line_corpus)
+def load(path, max_files=None):
+    corpara_word = Corpora()
+    corpara_line = Corpora()
+    files = glob.glob(os.path.join(path, './*.inkml'))[:max_files]
+    for i, path in enumerate(files):
+        name = os.path.basename(path).replace(".inkml", "")
+        print("import {:4}/{:4} ({:10})".format(i, len(files), name), end="\r")
+        inkml = IAMonDo(path)
+        corpara_word[name] = Corpus(
+            TranscriptedStrokes(segment.transcription, segment.strokes)
+            for segment in inkml.get_segments(IAMonDo.WORD))
+        corpara_line[name] = Corpus(
+            TranscriptedStrokes(segment.transcription, segment.strokes)
+            for segment in inkml.get_segments(IAMonDo.TEXTLINE))
+
+    print("{:30}".format(""), end="\r")
     return corpara_word, corpara_line
 
 
-def _import_set(iam_on_db_path, set_filename):
+def _import_set(iam_on_db_path, set_filename, max_files=None):
     print("import set: " + iam_on_db_path + "/" + set_filename)
 
     def files_in_set(path, set_filename):
@@ -114,38 +128,40 @@ def _import_set(iam_on_db_path, set_filename):
             for line in f:
                 yield path + "/" + line.rstrip('\n')
 
-    corpara_word = Corpus()
-    corpara_line = Corpus()
+    corpus_word = Corpus()
+    corpus_line = Corpus()
     num_files = 0
     filenames = list(files_in_set(iam_on_db_path, set_filename))
     for i, inkml_filename in enumerate(filenames):
-        print("import {:3}/{:3} ({})  ".format(
+        print("import {:4}/{:4} ({})     ".format(
             i, len(filenames), inkml_filename), end="\r")
         try:
             num_files += 1
-            inkml_file = IAMonDo(inkml_filename)
-            for segment in inkml_file.get_segments(IAMonDo.WORD):
-                corpara_word.append((segment.transcription, Ink(segment.ink)))
-            for segment in inkml_file.get_segments(IAMonDo.TEXTLINE):
-                corpara_line.append((segment.transcription, Ink(segment.ink)))
+            inkml = IAMonDo(inkml_filename)
+            new_words = Corpus(TranscriptedStrokes(segment.transcription, segment.strokes)
+                               for segment in inkml.get_segments(IAMonDo.WORD))
+            corpus_word.extend(new_words)
+            new_lines = Corpus(TranscriptedStrokes(segment.transcription, segment.strokes)
+                                for segment
+                                in inkml.get_segments(IAMonDo.TEXTLINE))
+            corpus_line.extend(new_lines)
         except FileNotFoundError:
             print("file {} not found {:20}".format(inkml_filename, ""))
-            pass
-        if i==10:
+        if i == max_files:
             break
 
     print(" {} words and {} textlines have been imported "
-          "from {} inkml-files ".format(len(corpara_word), len(corpara_line),
+          "from {} inkml-files ".format(len(corpus_word), len(corpus_line),
                                         num_files))
 
-    return corpara_word, corpara_line
+    return corpus_word, corpus_line
 
 
 def main():
     """ load the full IAMonDo database and show random lines and transcription
     """
 
-    words, lines = _import_set(flags.FLAGS.iam_on_do_path, "0.set")
+    words, lines = _import_set(flags.FLAGS.iam_on_do_path, "0.set", max_files=10)
     while True:
         lines.plot_sample()
 

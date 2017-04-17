@@ -1,48 +1,57 @@
 # SMART MANUSCRIPT
 
-This software transcripts handwritten manuscripts or digitizer pen input.
+This software transcribe (digitize) handwritten manuscripts and digitizer-pen input.
 
-It recognizes on-line handwriting (generated e.g. by smart pens) and can not read scanned pages.
+Note, it can only transcribe online handwriting (generated e.g. by smart pens) but no scanned pages.
 
 ## Getting Started
 
 ### Setup
 
- 1. Install [Tensorflow](https://www.tensorflow.org/get_started/os_setup) >= 0.12.0
+ 1. Install requirements: 
+    
+        pip3 install -r requirements.txt
 
- 2. Install python-modules numpy, scipy, pylab, svgpathtools, svgwrite, PyPDF2 and install pdftocairo
+ 2. Install this software
+        
+        python3 setup.py install
 
- 3. Optional: train the graph (or use the one in sample_graph)
+ 3. Optional: train a new model (or use the  default one)
 
 ### Usage
 
 #### Transcript handwritten notes
 
-Transcript the handwritten file (generated e.g. by smart pens)
-which must be either a PDF or a SVG
+Transcript the handwritten file (PDF or a SVG, generated e.g. by smart pens) and 
+generate a PDF which is searchable and where text can be copied from.
 
-    python3 smart_manuscript/transcript.py --file=sample_text/The_Zen_of_Python.pdf
-
-Make a PDF file which is searchable and where text can be copied from:
-
-    python3 smart_manuscript/searchable_pdf.py --file=sample_text/The_Zen_of_Python.pdf --output=new_file.pdf
+    transcribe data/sample_text/The_Zen_of_Python.pdf output.pdf
 
 #### Handwritten input
 
 A simple application that transcript handwritten input (e.g. from a digitizer pen):
 
-    python3 smart_manuscript/application.py
+    manuscript-writer
 
 The input will be copied into the clipboard.
 
 #### Train new model
 
-A new model can be trained by
+ 1. Get training and test data:
+    
+    a. You can use the [IAMonDo-db-1.0](http://www.iapr-tc11.org/dataset/IAMonDo/IAMonDo-db-1.0.tar.gz) database to train and validate the model. Place the unzipped folder IAMonDo-db-1.0 in the folder data. 
+    
+    b.  You can use the [IBM_UB_1](https://cubs.buffalo.edu/research/50:hwdata) database to train and validate the model. Place the folder IBM_UB_1 in the folder data. 
 
-    python3 smart_manuscript/train.py --name=new_model --build_data=0
+    c. You may use also your personal handwritten notes, analogously to the one in the directory smart_manuscript/data/sample_text. Place the files in the folder data/my_handwriting.
 
-You can use the [IAMonDo-db-1.0](http://www.iapr-tc11.org/dataset/IAMonDo/IAMonDo-db-1.0.tar.gz) database
-to train and validate the model. Place the unzipped folder IAMonDo-db-1.0 in the folder data. You may use also your personal handwritten notes, analogously to the one in the directory sample_text (see --train_my_writing)
+ 2. Create the preprocessed records:
+
+        python3 train_model.py records
+
+ 3. Train new model:
+
+        python3 train_model.py train --name=my_model
 
 ## Example
 
@@ -53,30 +62,30 @@ to train and validate the model. Place the unzipped folder IAMonDo-db-1.0 in the
 Transcription:
 
 <pre>
-The Zen of Python.
-by Tim Peters
+The zen of Python.
+by tim Peters
 Beantiful is better than ugly.
 Explicit is better than implicit.
-simple is better than complicated.
+Simple is better than complicated.
 Flat is better than nested.
 Sparse is better than dense.
 Readability counts.
-speaial cases aren't special enough to break the mles.
+Special cases aren't special enough to break the mles.
 Although practicality beats purity.
-Frrors should never pass silently.
+Errors should never pass silently.
 Unless explicitly silenced.
-In the face of ambiguity, refuse the temptation to guess.
-There should be one - and preferable only one
+In the face of anbiguity, refuse the temptation to guess.
+There should be one - and preferable onty dne
 - obvious way to do it.
-Aithough that way may not be obvious at
-first unless you're Dutch.
-Now is better than neve.
-Atthough never is often better than right now.
-If the implementation is hard to explain, it's a bad idea.
-If the implementation is easy to explain, it may be
+Although that way may not be obvious at
+first unless youire Dutch.
+Now is better than never.
+Although never is often better than right now.
+if the implementation is hard to explain, it's a bad idea.
+It the implementation is easy to explain, it may be
 a good idea.
 Namespaces are one hanking great idea -
-let's do more of those!
+let's do more of thosel
 </pre>
 
 ## Author

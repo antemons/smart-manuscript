@@ -1,0 +1,7 @@
+numpy>=1.11.0
+matplotlib>=1.5.1
+scipy>=0.18.0
+svgpathtools>=1.2.5
+tensorflow>=1.0.1
+PyPDF2>=1.26.0
+xinput>=0.1.3

@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 """
     This file is part of Smart Manuscript.
@@ -22,43 +22,37 @@
 
 import numpy as np
 from cairo import PDFSurface, Context, Matrix
-from reader import Reader
-from handwritten_vector_graphic import load as load_file
-from stroke_features import InkNormalization, Transformation
 from tensorflow.python.platform.app import flags
 from PyPDF2 import PdfFileWriter, PdfFileReader
 import tempfile
 
+from .handwritten_vector_graphic import load as ink_from_file
+from .stroke_features import normalized_ink, Transformation, InkPage
+from .reader import Reader
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
 
-FLAGS = flags.FLAGS
-flags.DEFINE_string(
-    "file", "sample_text/The_Zen_of_Python.pdf", "pdf-file to transcript")
-flags.DEFINE_string(
-    "output", "", "pdf-file which is augmented with the transcription")
-
 class SearchablePDF(Reader):
 
-    def __init__(self):
-        super().__init__(path=FLAGS.graph_path)
+    def __init__(self, model_path):
+        super().__init__(model_path)
 
-    def _generate_layer(self, transcription, ink, layer):
-        surface = PDFSurface(layer, *ink.page_size)
+    def _generate_layer(self, transcription, page, layer):
+        surface = PDFSurface(layer, *page.page_size)
         context = Context(surface)
         # context.select_font_face('Georgia')
         context.set_source_rgba(1, 1, 1, 1/256)  # almost invisible
         context.set_font_size(2)
-        for line_ink, line_transcription in zip(ink.lines, transcription):
-            norm_ink = InkNormalization(line_ink)
+        for line_ink, line_transcription in zip(page.lines, transcription):
+            norm_ink = normalized_ink(line_ink)
             context.save()
-            context.transform(Matrix(*(Transformation.translation(0, ink.page_size[1]).parameter)))
+            context.transform(Matrix(*(Transformation.translation(0, page.page_size[1]).parameter)))
             context.transform(Matrix(*(Transformation.mirror(0).parameter)))
-            context.transform(Matrix(*((~norm_ink._transformation).parameter)))
+            context.transform(Matrix(*((~norm_ink.global_transformation).parameter)))
             context.transform(Matrix(*(Transformation.mirror(0).parameter)))
-            HANDWRITING_WIDTH = norm_ink.ink.boundary_box[1]
+            HANDWRITING_WIDTH = norm_ink.boundary_box[1]
             TYPEWRITING_WIDTH = context.text_extents(line_transcription)[2]
             context.scale(HANDWRITING_WIDTH/TYPEWRITING_WIDTH, 1)
             context.move_to(0, 0)
@@ -80,22 +74,13 @@ class SearchablePDF(Reader):
 
         with open(output_pdf, 'wb') as f:
             output.write(f)
+        print("Transcribed manuscript have been generated:", output_pdf)
 
     def generate(self, input_pdf, output_pdf):
-        ink = load_file(input_pdf)
-        transcription = self.recognize_page(ink).split("\n")
+        strokes, page_size = ink_from_file(input_pdf)
+        page = InkPage(strokes, page_size)
+        transcription = self.recognize_page(strokes).split("\n")
         with tempfile.TemporaryFile() as transcription_layer:
             self._generate_layer(
-                transcription, ink=ink, layer=transcription_layer)
+                transcription, page=page, layer=transcription_layer)
             self._add_layer_to_pdf(input_pdf, transcription_layer, output_pdf)
-
-
-def main():
-    output_pdf = FLAGS.output
-    if not output_pdf:
-        output_pdf = FLAGS.file.replace(".pdf", "_searchable.pdf")
-    SearchablePDF().generate(FLAGS.file, output_pdf)
-
-
-if __name__ == "__main__":
-    main()

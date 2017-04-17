@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 """
     This file is part of Smart Manuscript.
@@ -21,19 +21,20 @@
 """
 
 import numpy as np
+import difflib
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
 
 
-class Bunch(object):
+class Bunch:
     """ collecting named items """
     def __init__(self, **kwargs):
         self.__dict__ = kwargs
 
 
-class Transformation(object):
+class Transformation:
 
     def __init__(self, param):
         if isinstance(param, np.ndarray):
@@ -77,23 +78,44 @@ class Transformation(object):
     def determinant(self):
         return np.linalg.det(self.matrix)
 
-    def __mul__(self, other):
+    def __matmul__(self, other):
         if isinstance(other, np.ndarray):
-            return (np.dot(other,
-                           self.matrix[:2, :2].transpose()) +
-                    self.matrix[:2, 2])
+            return other @ self.matrix[:2, :2].transpose() + self.matrix[:2, 2]
         elif isinstance(other, Transformation):
-            return Transformation(np.dot(self.matrix,
-                                         other.matrix))
+            return Transformation(self.matrix @ other.matrix)
 
     def __invert__(self):
         return Transformation(np.linalg.inv(self.matrix))
 
 
+def colored_str_comparison(text, n_text):
+    """ Unify operations between two compared strings seqm is a difflib.
+        SequenceMatcher instance whose a & b are strings
+        cnf. http://stackoverflow.com/a/788780
+    """
+    seqm = difflib.SequenceMatcher(None, text, n_text)
+    output= ""
+    RED = '\033[91m'
+    GREEN = '\033[92m'
+    BLACK = '\033[0m'
+    for opcode, a0, a1, b0, b1 in seqm.get_opcodes():
+        if opcode == 'equal':
+            output += seqm.a[a0:a1]
+        elif opcode == 'insert':
+            output += RED + seqm.b[b0:b1] + BLACK
+        elif opcode == 'delete':
+            output += GREEN + seqm.a[a0:a1] + BLACK
+        elif opcode == 'replace':
+            output += GREEN + seqm.a[a0:a1] + RED + seqm.b[b0:b1] + BLACK
+        else:
+            raise RuntimeError
+    return ''.join(output)
+
+
 def cached_property(function):
     """ decorator to strore the results of a method
     """
-    attr_name = '_chached_' + function.__name__
+    attr_name = '_cached_' + function.__name__
 
     @property
     def _chached_property(self):
@@ -101,3 +123,13 @@ def cached_property(function):
             setattr(self, attr_name, function(self))
         return getattr(self, attr_name)
     return _chached_property
+
+
+# class cached_property:
+#     def __init__(self, function):
+#         self.function = function
+#
+#     def __get__(self, obj, cls):
+#         value = self.function(obj)
+#         setattr(obj, self.function.__name__, value)
+#         return value

@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 """
     This file is part of Smart Manuscript.
@@ -20,15 +20,12 @@
     along with Smart Manuscript.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from inkml_new import InkML, TraceGroup
 from tensorflow.python.platform.app import flags
-import numpy as np
-import pylab as plt
 import os
-from corpus import Corpus
-from stroke_features import Ink
-from utils import Bunch
 import glob
+
+from .inkml import InkML, TraceGroup
+from .corpus import Corpus, Corpora, TranscriptedStrokes
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
@@ -45,32 +42,31 @@ class IBMub(InkML):
 
     def get_segments(self):
         for trace_group in self._root.childs_of_type(TraceGroup):
-            yield Bunch(
+            yield TranscriptedStrokes(
                 transcription=trace_group.annotation[self.TRANSCRIPTION],
-                ink=trace_group.ink())
+                strokes=trace_group.ink())
 
 
-def load(path):
+def load(path, max_files=None):
+    """ return corpora (corpus of all files) of the IBM UB database
+    """
     FILETYPE = ".inkml"
-    corpus = Corpus()
-    print(path + "*" + FILETYPE)
-    num_files = len(glob.glob(path + "*" + FILETYPE))
-    for i, filename in enumerate(glob.glob(path + "*" + FILETYPE)):
-        print("load file ({:3}/{:3}): {}".format(i, num_files, filename),
-              end="\r", flush=True)
-        for segment in IBMub(filename).get_segments():
-            corpus.append((segment.transcription, Ink(segment.ink)))
-        if i == 10:
-            break
-    print("{:60}".format(""))
-    return corpus
+    corpora = Corpora()
+    files = glob.glob(os.path.join(path, './*.inkml'))[:max_files]
+    for i, path in enumerate(files):
+        name = os.path.basename(path).replace(".inkml", "")
+        print("import {:4}/{:4} ({:20})".format(i, len(files), name), end="\r")
+        corpora[name] = Corpus(IBMub(path).get_segments())
+    print("{:40}".format(""), end="\r")
+    return corpora
 
 
 def main():
     """ load the full IBM UB database and show random lines and transcription
     """
 
-    corpus = load(flags.FLAGS.ibm_ub_path)
+    corpora = load(flags.FLAGS.ibm_ub_path, max_files=10)
+    corpus = corpora.merge()
     while True:
         corpus.plot_sample()
 
