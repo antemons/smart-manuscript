@@ -9,6 +9,5 @@ tmp/*
 more_samples/*
 /*.egg-info
 /dist/
-tests
 test_samples
 build

@@ -69,7 +69,7 @@ class Ink:
         >>> strokes = [np.array([[0, 0], [0, 0], [1, 0]]),\
                        np.array([[1, 0], [2, 0]]), np.array([[2, 1], [3, 1]])]
         >>> ink = Ink.from_corrupted_stroke(strokes)
-        >>> for stroke in ink.strokes: print(stroke)
+        >>> print(ink)
         [[ 0.  0.]
          [ 1.  0.]
          [ 2.  0.]]
@@ -87,7 +87,7 @@ class Ink:
         return cls(strokes, is_uncorrupted=True)
 
     def __str__(self):
-        return "Ink({})".format(str(self.strokes))
+        return "".join(str(stroke) + "\n" for stroke in self)[:-1]
 
     def __deepcopy__(self, _):
         return self.__class__(self.strokes, is_uncorrupted=self.is_uncorrupted)
