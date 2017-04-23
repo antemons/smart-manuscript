@@ -46,13 +46,13 @@ class SearchablePDF(Reader):
         context.set_source_rgba(1, 1, 1, 1/256)  # almost invisible
         context.set_font_size(2)
         for line_ink, line_transcription in zip(page.lines, transcription):
-            norm_ink = normalized_ink(line_ink)
+            ink, transformation = normalized_ink(line_ink)
             context.save()
             context.transform(Matrix(*(Transformation.translation(0, page.page_size[1]).parameter)))
             context.transform(Matrix(*(Transformation.mirror(0).parameter)))
-            context.transform(Matrix(*((~norm_ink.global_transformation).parameter)))
+            context.transform(Matrix(*((~transformation).parameter)))
             context.transform(Matrix(*(Transformation.mirror(0).parameter)))
-            HANDWRITING_WIDTH = norm_ink.boundary_box[1]
+            HANDWRITING_WIDTH = ink.boundary_box[1]
             TYPEWRITING_WIDTH = context.text_extents(line_transcription)[2]
             context.scale(HANDWRITING_WIDTH/TYPEWRITING_WIDTH, 1)
             context.move_to(0, 0)

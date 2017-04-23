@@ -83,6 +83,8 @@ class Transformation:
             return other @ self.matrix[:2, :2].transpose() + self.matrix[:2, 2]
         elif isinstance(other, Transformation):
             return Transformation(self.matrix @ other.matrix)
+        else:
+            return NotImplemented
 
     def __invert__(self):
         return Transformation(np.linalg.inv(self.matrix))

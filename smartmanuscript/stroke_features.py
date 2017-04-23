@@ -51,7 +51,7 @@ class Ink:
     def __init__(self, strokes=None, is_uncorrupted=False):
         """ create Ink from strokes, consider use Ink.from_corrupted_stroke()
         """
-        strokes = deepcopy(strokes)
+        #strokes = deepcopy(strokes)
         if strokes is not None and strokes != []:
             self._concatenated_strokes = np.concatenate(strokes)
             sections = np.cumsum([len(s) for s in strokes])[:-1]
@@ -89,14 +89,14 @@ class Ink:
     def __str__(self):
         return "".join(str(stroke) + "\n" for stroke in self)[:-1]
 
-    def __deepcopy__(self, _):
-        return self.__class__(self.strokes, is_uncorrupted=self.is_uncorrupted)
+    #def __deepcopy__(self, _):
+    #    return self.__class__(self.strokes, is_uncorrupted=self.is_uncorrupted)
 
     def __getstate__(self):
-        return self.strokes
+        return [self.strokes, self.is_uncorrupted]
 
-    def __setstate__(self, strokes):
-        self.__init__(strokes)
+    def __setstate__(self, state):
+        self.__init__(strokes=state[0], is_uncorrupted=state[1])
 
     def __iter__(self):
         return self.strokes.__iter__()
@@ -105,9 +105,9 @@ class Ink:
     def concatenated_strokes(self):
         return self._concatenated_strokes
 
-    @concatenated_strokes.setter
-    def concatenated_strokes(self, value):
-        self._concatenated_strokes[:] = value
+    #@concatenated_strokes.setter
+    #def concatenated_strokes(self, value):
+    #    self._concatenated_strokes[:] = value
 
     @staticmethod
     def _remove_dublicated_points(strokes):
@@ -129,19 +129,19 @@ class Ink:
                 strokes[i] = np.concatenate([strokes[i][:-1], strokes[i+1]])
                 strokes.pop(i+1)
 
-    @property
+    @cached_property
     def boundary_box(self):
         return (min(self._concatenated_strokes[:, 0]),
                 max(self._concatenated_strokes[:, 0]),
                 min(self._concatenated_strokes[:, 1]),
                 max(self._concatenated_strokes[:, 1]))
 
-    @property
+    @cached_property
     def width_height_ratio(self):
         min_x, max_x, min_y, max_y = self.boundary_box
         return (max_x - min_x) / (max_y - min_y)
 
-    @property
+    @cached_property
     def length(self):
         def stroke_length(stroke):
             x = stroke[:, 0]
@@ -151,7 +151,7 @@ class Ink:
 
         return sum(stroke_length(stroke) for stroke in self)
 
-    @property
+    @cached_property
     def part_length(self):
         """
         >>> strokes = [np.array([[0, 0], [1, 0]]),\
@@ -180,8 +180,8 @@ class Ink:
         minima, maxima = np.array(minima), np.array(maxima)
         return minima, maxima
 
-    def transform(self, transformation):
-        self.concatenated_strokes = transformation @ self.concatenated_strokes
+    #def transform(self, transformation):
+    #    self.concatenated_strokes = transformation @ self.concatenated_strokes
 
     def plot_pylab(self, axes=None, transcription=None, auxiliary_lines=False,
                    hide_ticks=False):
@@ -200,7 +200,18 @@ class Ink:
             axes.plot(self.boundary_box[:2], [1, 1], 'k:')
 
     def __add__(self, other):
-        return self.__class__(self.strokes + other.strokes)
+        return type(self).from_corrupted_stroke(
+            self.strokes + other.strokes)
+
+    def __rmatmul__(self, other):
+        new_concatenated_strokes = other @ self.concatenated_strokes
+        sections = np.cumsum([len(s) for s in self])[:-1]
+        new_strokes = np.split(new_concatenated_strokes, sections)
+        return type(self)(new_strokes, is_uncorrupted=self.is_uncorrupted)
+        #if isinstance(other, np.ndarray):
+        #    return other @ self.matrix[:2, :2].transpose() + self.matrix[:2, 2]
+        #elif isinstance(other, Transformation):
+        #    return Transformation(self.matrix @ other.matrix)
 
 def gauss(x, mu, sigma):
     return np.exp(- (x - mu)**2 / (2 * sigma**2)) / (sigma * np.sqrt(2 * np.pi))
@@ -244,9 +255,9 @@ class InkPage(Ink):
         super().__init__(strokes, is_uncorrupted=is_uncorrupted)
         self.page_size = page_size
 
-    def __deepcopy__(self, _):
-        return type(self)(self.strokes, page_size=self.page_size,
-                          is_uncorrupted=self.is_uncorrupted)
+    #def __deepcopy__(self, _):
+    #    return type(self)(self.strokes, page_size=self.page_size,
+    #                      is_uncorrupted=self.is_uncorrupted)
 
     @cached_property
     def lines(self, min_seperation=None):  # TODO(daniel): remove min_seperation
@@ -270,52 +281,79 @@ class InkNormalization:
     """ normalize a stroke by slant, skew, baseline, height, and width
     """
 
-    class TransformedInk(Ink):
-        """ A Ink which stores additionally all made transformations.
+    # class TransformedInk(Ink):
+    #     """ A Ink which stores additionally all made transformations.
+    #
+    #     Attributes:
+    #         global_transformation (Transformation):
+    #     """
+    #     def __init__(self, strokes, global_transformation=None,
+    #                  *args, **kwargs):
+    #         super().__init__(strokes, *args, **kwargs)
+    #         if global_transformation is None:
+    #             global_transformation = Transformation.identity()
+    #         self.global_transformation = global_transformation
+    #
+    #     def transform(self, transformation):
+    #         super().transform(transformation)
+    #         self.global_transformation = \
+    #              transformation @ self.global_transformation
+    #         #print(self.global_transformation.matrix, name)
+    #         #raise NotImplementedError
 
-        Attributes:
-            global_transformation (Transformation):
-        """
-        def __init__(self, strokes, global_transformation=None,
-                     *args, **kwargs):
-            super().__init__(strokes, *args, **kwargs)
-            if global_transformation is None:
-                global_transformation = Transformation.identity()
-            self.global_transformation = global_transformation
-
-        def transform(self, transformation):
-            super().transform(transformation)
-            self.global_transformation = \
-                 transformation @ self.global_transformation
-            #print(self.global_transformation.matrix, name)
-            #raise NotImplementedError
-
+    @staticmethod
+    def _apply_normalizations(ink, normalizations):
+        transformation = Transformation.identity()
+        for normalization in normalizations:
+            ink, new_transformation = normalization(ink)
+            transformation = new_transformation @ transformation
+        return ink, transformation
 
     def __call__(self, ink, skew_is_horizontal=False):
-        ink = self.TransformedInk(ink.strokes, is_uncorrupted=ink.is_uncorrupted)
         if skew_is_horizontal:
-            self.normalize_mean(ink)
+            normalized_skew_and_mean = self.normalized_mean
         else:
-            self.normalize_skew_and_mean(ink)
-        self.normalize_slant(ink)
-        self.normalize_baseline(ink)
-        self.normalize_width(ink)
-        self.normalize_left(ink)
-        return ink
+            normalized_skew_and_mean = self.normalized_skew_and_mean
+        ink, transation = self._apply_normalizations(
+            ink,
+            [normalized_skew_and_mean,
+             self.normalized_skew_and_mean,
+             self.normalized_slant,
+             self.normalized_baseline,
+             self.normalized_width,
+             self.normalized_left])
+        return ink, transation
+        #ink = self.TransformedInk(ink.strokes, is_uncorrupted=ink.is_uncorrupted)
+        # transation = Transformation.identity()
+        # if skew_is_horizontal:
+        #     ink_1, transformation_skew_and_mean = self.normalized_mean(ink)
+        # else:
+        #     ink_1, transformation_skew_and_mean = self.normalized_skew_and_mean(ink)
+        # transation @= transformation_skew_and_mean
+        #
+        # ink_2, transation_slant = self.normalize_slant(ink_1)
+        # transation @= transation_slant
+        #
+        # ink_3, transation_baseline = self.normalized_baseline(ink_2)
+        # transation @= transation_slant
+        #
+        # self.normalize_width(ink)
+        # self.normalize_left(ink)
+        # return ink
 
 
     def plot(self, ink):
         ink = self.TransformedInk(ink.strokes)
-        strokes_orig = deepcopy(ink)
+        #strokes_orig = deepcopy(ink)
         self.normalize_skew_and_mean(ink)
-        strokes_skew = deepcopy(ink)
+        #strokes_skew = deepcopy(ink)
         self.normalize_slant(ink)
-        strokes_slant = deepcopy(ink)
+        #strokes_slant = deepcopy(ink)
         self.normalize_baseline(ink)
-        strokes_baseline = deepcopy(ink)
+        #strokes_baseline = deepcopy(ink)
         self.normalize_width(ink)
         self.normalize_left(ink)
-        strokes_width = deepcopy(ink)
+        #strokes_width = deepcopy(ink)
 
         _, axes = plt.subplots(5)
         strokes_orig.plot_pylab(axes[0], "original")
@@ -340,13 +378,13 @@ class InkNormalization:
 
 
     @staticmethod
-    def normalize_mean(ink):
+    def normalized_mean(ink):
         mean = np.mean(ink.concatenated_strokes, axis=0)
         transformation = Transformation.translation(*(-mean))
-        ink.transform(transformation)
+        return transformation @ ink, transformation
 
     @classmethod
-    def normalize_skew_and_mean(cls, ink):
+    def normalized_skew_and_mean(cls, ink):
         """ normalize skew by an linear fit
 
         Args:
@@ -368,13 +406,16 @@ class InkNormalization:
 
         if np.linalg.norm(a) < 0.3:
             angle = round(angle/(np.pi/2))*np.pi/2
-            transformation = Transformation.rotation(-angle)
-            ink.transform(transformation)
-            cls.normalize_mean(ink)
+            transformation_skew = Transformation.rotation(-angle)
+            _, transformation_mean = cls.normalized_mean(ink)
+            #ink.transform(transformation)
+            transformation = transformation_mean @ transformation_skew
+
         else:
             transformation = (Transformation.rotation(-angle) @
                               Transformation.translation(*(-b)))
-            ink.transform(transformation)
+
+        return transformation @ ink, transformation
 
     # def normalize_skew_old(self):
     #     """ normalize skew by an linear fit
@@ -398,29 +439,30 @@ class InkNormalization:
     #     self._transform(transformation)
 
     @staticmethod
-    def normalize_left(ink):
+    def normalized_left(ink):
         """ set the leftmost point to x = 0
         """
         min_x = ink.boundary_box[0]
         transformation = Transformation.translation(- min_x, 0)
-        ink.transform(transformation)
+        return transformation @ ink, transformation
 
     @staticmethod
-    def normalize_slant(ink):
+    def normalized_slant(ink):
         """ normalize the slant
         """
 
         def tilted_ink_length(ink, angle):
-            ink = deepcopy(ink)
-            ink.transform(Transformation.shear(y_angle=angle))
-            return ink.length
+            #ink = deepcopy(ink)
+            #ink.transform(Transformation.shear(y_angle=angle))
+            tilted_ink = Transformation.shear(y_angle=angle) @ ink
+            return tilted_ink.length
 
         angle = minimize(lambda a: tilted_ink_length(ink, a), 0).x
         transformation = Transformation.shear(y_angle=angle)
-        ink.transform(transformation)
+        return transformation @ ink, transformation
 
     @staticmethod
-    def normalize_baseline(ink):
+    def normalized_baseline(ink):
         """ normalize baseline to y = 0 and mean line (height) to y = 1
 
         Fits the local minima (maxima) to the baseline (mean line), resp.
@@ -450,15 +492,15 @@ class InkNormalization:
             assert HEIGHT >= 0
         transformation = (Transformation.scale(1 / HEIGHT) @
                           Transformation.translation(0, - BASELINE))
-        ink.transform(transformation)
+        transformed_ink = transformation @ ink
 
-        if ink.boundary_box[2] < -4:
+        if transformed_ink.boundary_box[2] < -4:
             warnings.warn(NormalizationWarning("Baseline normalization failed"))
 
-        if ink.boundary_box[3] > 4:
+        if transformed_ink.boundary_box[3] > 4:
             warnings.warn(NormalizationWarning("Baseline normalization failed"))
 
-
+        return transformed_ink, transformation
     # def normalize_baseline_advanced(self):
     #     minima, maxima = self.ink.get_extrema()
     #     _, BASELINE, MEANLINE, _ = \
@@ -469,7 +511,7 @@ class InkNormalization:
     #     self._transform(transformation)
 
     @staticmethod
-    def normalize_width(ink):
+    def normalized_width(ink):
         """ normalize the width by using the average width between two
             intersections with line between base and mean line
 
@@ -488,7 +530,7 @@ class InkNormalization:
         else:
             scale_width = 1
         transformation = Transformation.scale((scale_width, 1))
-        ink.transform(transformation)
+        return transformation @ ink, transformation
 
 normalized_ink = InkNormalization()
 
@@ -994,13 +1036,21 @@ class InkFeatures:
         assert self.NUM_FEATURES == features.shape[1]
         return features
 
-def strokes_to_features(strokes, normalize=True, skew_is_horizontal=False, resort=False):
+def strokes_to_features(
+        strokes,
+        normalize=True,
+        skew_is_horizontal=False,
+        resort=False,
+        ret_transformation=False):
     ink = Ink.from_corrupted_stroke(strokes, skew_is_horizontal)
     if normalize:
-        ink = normalized_ink(ink, skew_is_horizontal=skew_is_horizontal)
+        ink, transformation = normalized_ink(
+            ink, skew_is_horizontal=skew_is_horizontal)
     features = InkFeatures.ink_to_features(ink)
-    return features
-
+    if not ret_transformation:
+        return features
+    else:
+        return features, transformation
 def plot_features(features, transcription=None, axes=None):
     """ show the strokes (only from the features)
     """
