@@ -73,44 +73,53 @@ def preprocessed_corpus(corpus, encode, min_words=0, min_letters=1,
                       baseline_misalign=0)
     for i, example in enumerate(corpus):
         if (i % 100) == 0:
-            print("{:5}/{:5} {} {:20}".format(i, len(corpus), example.transcription, ""), end="\r", flush=True)
+            print(
+                "{:5}/{:5} {} {:20}".format(
+                    i, len(corpus), example.transcription, ""),
+                end="\r", flush=True)
 
         transcription = preprocessed_transcription(
             example.transcription)
 
         if len(transcription) < max(min_letters, 1):
-            warnings.warn(PreprocessWarning("too short transcription", example.transcription))
+            warnings.warn(PreprocessWarning("too short transcription",
+                                            example.transcription))
             sorted_out["too_few_letters"] += 1
             continue
 
         if len(transcription.split(" ")) < min_words:
-            warnings.warn(PreprocessWarning("too short transcription", example.transcription))
+            warnings.warn(PreprocessWarning("too short transcription",
+                                            example.transcription))
             sorted_out["too_few_words"] += 1
             continue
 
         try:
-            labeled_features = preprocessed(example, encode,
-                                            skew_is_horizontal=skew_is_horizontal)
+            labeled_features = preprocessed(
+                example, encode, skew_is_horizontal=skew_is_horizontal)
         except NormalizationWarning:
-            warnings.warn(PreprocessWarning("Normalization failed", example.transcription))
+            warnings.warn(PreprocessWarning("Normalization failed",
+                                            example.transcription))
             sorted_out["normalization_waring"] += 1
             continue
         except encoder.SymbolNotInAlphabet:
-            warnings.warn(PreprocessWarning("Unknown Symbol", example.transcription))
+            warnings.warn(PreprocessWarning("Unknown Symbol",
+                                            example.transcription))
             sorted_out["symbol_not_in_alphabet"] += 1
             continue
 
         if (len(labeled_features.feature) < 5 or
             len(labeled_features.feature) < len(labeled_features.label)):
 
-            warnings.warn(PreprocessWarning("Too short feature", example.transcription))
+            warnings.warn(PreprocessWarning("Too short feature",
+                                            example.transcription))
             sorted_out["too_few_features"] += 1
             continue
 
         if (max(labeled_features.feature[:, 1]) > 4 or
             min(labeled_features.feature[:, 1]) < -4):
 
-            warnings.warn(PreprocessWarning("Baseline misalign", example.transcription))
+            warnings.warn(PreprocessWarning("Baseline misalign",
+                                            example.transcription))
             sorted_out["baseline_misalign"] += 1
             continue
         result.append(labeled_features)

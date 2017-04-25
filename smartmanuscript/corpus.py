@@ -37,6 +37,8 @@ TranscriptedStrokes = namedtuple('TranscriptedStrokes',
                                  ['transcription', 'strokes'])
 
 class Corpus(list):
+    """ Corpus is a list of tuples (transcription, strokes)
+    """
 
 
     def plot_sample(self, rows=4, columns=2):
@@ -60,6 +62,7 @@ class Corpus(list):
 
 
 class Corpora(dict):
-
+    """ Dict of {name: corpus}
+    """
     def merge(self):
         return sum(self.values(), Corpus())

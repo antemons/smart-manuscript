@@ -43,9 +43,9 @@ def read_flags():
         help='the generated transcribed manuscipt')
     dafault_model_path = os.path.join(
         os.path.dirname(__file__), 'data', 'model', 'model.ckpt')
-    parser.add_argument('--model_path', default=dafault_model_path, 
+    parser.add_argument('--model_path', default=dafault_model_path,
                         help='the tensorflow model')
-    parser.add_argument('--dry-run', action='store_true', 
+    parser.add_argument('--dry-run', action='store_true',
                         help='no output is written')
 
     return parser.parse_args()
@@ -67,7 +67,7 @@ def main():
         transcription = reader.recognize_page(strokes)
     else:
         searchable_pdf.generate(source_manuscript, target_manuscript)
-    
+
 
 if __name__ == "__main__":
     main()
