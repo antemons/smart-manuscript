@@ -55,8 +55,8 @@ The input will be copied into the clipboard.
 
 ## Example
 
-<a href="smart_manuscript/data/sample_text/The_Zen_of_Python.pdf">
-  <img src="smart_manuscript/data/sample_text/The_Zen_of_Python.png" width="75%" height="75%">
+<a href="smartmanuscript/data/sample_text/The_Zen_of_Python.pdf">
+  <img src="smartmanuscript/data/sample_text/The_Zen_of_Python.png" width="75%" height="75%">
 </a>
 
 Transcription:
