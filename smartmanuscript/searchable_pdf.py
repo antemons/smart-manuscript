@@ -21,7 +21,7 @@
 """
 
 import numpy as np
-from cairo import PDFSurface, Context, Matrix
+from cairocffi import PDFSurface, Context, Matrix
 from tensorflow.python.platform.app import flags
 from PyPDF2 import PdfFileWriter, PdfFileReader
 import tempfile
