@@ -11,3 +11,4 @@ more_samples/*
 /dist/
 test_samples
 build
+env
