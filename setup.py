@@ -5,7 +5,7 @@ from setuptools import setup
 setup(
     name='smartmanuscript',
     version='0.2',
-    description='Transcribe (digitize) handwritten manuscripts and digitizer pen input',
+    description='Transcribes (digitizes) handwritten manuscripts and digitizer-pen input',
     author='Daniel Vorberg',
     author_email='dv@pks.mpg.de',
     url='https://github.com/antemons/smart-manuscript',

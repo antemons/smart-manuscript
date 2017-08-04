@@ -1,6 +1,6 @@
 # SMART MANUSCRIPT
 
-This software transcribe (digitize) handwritten manuscripts and digitizer-pen input.
+This software transcribes (digitizes) handwritten manuscripts and digitizer-pen input.
 
 Note, it can only transcribe online handwriting (generated e.g. by smart pens) but no scanned pages.
 
@@ -8,15 +8,20 @@ Note, it can only transcribe online handwriting (generated e.g. by smart pens) b
 
 ### Setup
 
+ 0. (Create Virtual Environment)
+
+        virtualenv env -p /usr/bin/python3
+	source env/bin/activate
+
  1. Install requirements: 
     
-        pip3 install -r requirements.txt
+        pip install -r requirements.txt
 
  2. Install this software
         
-        python3 setup.py install
+        python setup.py install
 
- 3. Optional: train a new model (or use the  default one)
+ 3. Optional: train a new model (or use the default one)
 
 ### Usage
 
@@ -29,7 +34,7 @@ generate a PDF which is searchable and where text can be copied from.
 
 #### Handwritten input
 
-A simple application that transcript handwritten input (e.g. from a digitizer pen):
+A simple application that transcripts handwritten input (e.g. from a digitizer pen):
 
     manuscript-writer
 
