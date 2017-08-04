@@ -52,11 +52,11 @@ The input will be copied into the clipboard.
 
  2. Create the preprocessed records:
 
-        python3 train_model.py records
+        python train_model.py records
 
  3. Train new model:
 
-        python3 train_model.py train --name=my_model
+        python train_model.py train --name=my_model
 
 ## Example
 
