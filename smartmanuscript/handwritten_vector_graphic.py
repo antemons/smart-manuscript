@@ -87,8 +87,8 @@ def _read_svg(filename, is_handwritten=None):
 
     svg_dom = minidom.parse(filename)
     element = svg_dom.getElementsByTagName('svg')[0]
-    WIDTH = int(remove_unit(element.getAttribute("width")))
-    HEIGHT = int(remove_unit(element.getAttribute("height")))
+    WIDTH = float(remove_unit(element.getAttribute("width")))
+    HEIGHT = float(remove_unit(element.getAttribute("height")))
     svg_dom.unlink()
 
     strokes = []

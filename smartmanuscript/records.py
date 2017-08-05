@@ -144,7 +144,7 @@ def create_records(
                                                   max_files=max_files)
 
         corpora_dict["zen_test"] = Corpora(
-            zen_test=from_pdf("smart_manuscript/data/sample_text/The_Zen_of_Python.svg"))
+            zen_test=from_pdf("smartmanuscript/data/sample_text/The_Zen_of_Python.svg"))
 
         pickle.dump(corpora_dict, open(pickle_filepath, "wb"), -1)
     else:
