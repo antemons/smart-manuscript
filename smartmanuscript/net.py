@@ -25,7 +25,7 @@ from scipy.sparse import csc_matrix
 import tensorflow as tf
 from tensorflow.python.platform.app import flags
 from tensorflow.python.ops import ctc_ops as ctc
-from tensorflow.contrib.rnn import LSTMCell
+from tensorflow.contrib.rnn import LSTMCell, DropoutWrapper
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner
 import numpy as np
@@ -258,17 +258,32 @@ class NeuralNetworks:
         for n_layer, num_hidden_neurons in enumerate(self._lstm_sizes):
             # TODO: define new OpenLSTMCell(LSTMCell)
             # TODO(dv): add dropout?
-            lstm_cell_fw = LSTMCell(
-                num_hidden_neurons, state_is_tuple=True)
-            if n_layer != 0 or not self._share_param_first_layer:
-                lstm_cell_bw = LSTMCell(
-                    num_hidden_neurons, state_is_tuple=True)
-            else:
-                lstm_cell_bw = lstm_cell_fw
+
+            def create_cell(num_hidden_neurons, input_size,
+                            reuse=None):
+                lstm_cell = LSTMCell(num_hidden_neurons,
+                                     state_is_tuple=True,
+                                     reuse=reuse)
+                dropout_cell = DropoutWrapper(
+                    cell=lstm_cell,
+                    input_keep_prob=0.5,
+                    output_keep_prob=0.5,
+                    state_keep_prob=0.5,
+                    variational_recurrent=True,
+                    input_size=input_size,
+                    dtype=tf.float32)
+                return dropout_cell
+
+            #with tf.variable_scope(f"layer_{n_layer}"):
+            # TODO(dv): try to use shared weigth for fw and bw:
+            lstm_cell_bw, lstm_cell_fw = [
+                create_cell(num_hidden_neurons,
+                            lstm_layer_input.get_shape()[-1])
+                for _ in ("bw", "fw")]
             outputs, output_states = tf.nn.bidirectional_dynamic_rnn(
                 lstm_cell_fw, lstm_cell_bw,
                 inputs=lstm_layer_input, dtype=tf.float32,
-                scope='BLSTM_' + str(n_layer + 1),
+                scope=f"layer_{n_layer}",
                 sequence_length=self.input.length)
             output_fw = outputs[0]
             output_bw = outputs[1]
