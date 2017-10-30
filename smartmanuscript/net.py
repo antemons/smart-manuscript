@@ -199,7 +199,7 @@ class NeuralNetworks:
         self.encoder = encoder
         self._lstm_sizes = lstm_sizes
         self.NUM_CLASSES = len(self.encoder.alphabet) + 1
-        self.path = "graphs/{}/".format(name)
+        self.path = f"graphs/{name}/"
         self._share_param_first_layer = share_param_first_layer
         tf.logging.set_verbosity(tf.logging.DEBUG)
         self._input = input_
@@ -208,8 +208,7 @@ class NeuralNetworks:
         print(self)
 
     def __str__(self):
-        return "CTC-BLSTM with {} neurons per LSTM cell"\
-            .format(self._lstm_sizes)
+        return f"CTC-BLSTM with {self._lstm_sizes} neurons per LSTM cell"
 
     def _build_tensors(self):
         self.train_step
@@ -254,49 +253,46 @@ class NeuralNetworks:
 
     @cached_property
     def logits(self):
-        lstm_layer_input = self.input.sequence
-        for n_layer, num_hidden_neurons in enumerate(self._lstm_sizes):
+        layer_input = self.input.sequence
+        for n_layer, num_units in enumerate(self._lstm_sizes):
             # TODO: define new OpenLSTMCell(LSTMCell)
-            # TODO(dv): add dropout?
+            # TODO(dv): try to use shared weigth for fw and bw
 
-            def create_cell(num_hidden_neurons, input_size,
+            def create_cell(num_units, input_size,
                             reuse=None):
-                lstm_cell = LSTMCell(num_hidden_neurons,
-                                     state_is_tuple=True,
-                                     reuse=reuse)
+                print(input_size)
+                cell = LSTMCell(num_units,
+                                state_is_tuple=True,
+                                reuse=reuse)
+                return cell
                 dropout_cell = DropoutWrapper(
-                    cell=lstm_cell,
-                    input_keep_prob=0.5,
+                    cell=cell,
                     output_keep_prob=0.5,
                     state_keep_prob=0.5,
                     variational_recurrent=True,
-                    input_size=input_size,
+                    #input_size=input_size,
                     dtype=tf.float32)
                 return dropout_cell
 
-            #with tf.variable_scope(f"layer_{n_layer}"):
-            # TODO(dv): try to use shared weigth for fw and bw:
-            lstm_cell_bw, lstm_cell_fw = [
-                create_cell(num_hidden_neurons,
-                            lstm_layer_input.get_shape()[-1])
+            cell_bw, cell_fw = [
+                create_cell(num_units,
+                            layer_input.get_shape()[1:])
                 for _ in ("bw", "fw")]
             outputs, output_states = tf.nn.bidirectional_dynamic_rnn(
-                lstm_cell_fw, lstm_cell_bw,
-                inputs=lstm_layer_input, dtype=tf.float32,
+                cell_fw, cell_bw,
+                inputs=layer_input, dtype=tf.float32,
                 scope=f"layer_{n_layer}",
                 sequence_length=self.input.length)
-            output_fw = outputs[0]
-            output_bw = outputs[1]
-            lstm_layer_output = tf.concat([output_fw, output_bw], 2)
-            lstm_layer_input = lstm_layer_output
+            layer_output = tf.concat(outputs, 2)
+            layer_input = layer_output
         W = tf.Variable(
-            tf.truncated_normal([2 * num_hidden_neurons, self.NUM_CLASSES],
+            tf.truncated_normal([2 * num_units, self.NUM_CLASSES],
                                 stddev=0.1))
         b = tf.Variable(tf.constant(0.1, shape=[self.NUM_CLASSES]))
-        lstm_layer_output = tf.reshape(
-            lstm_layer_output, [-1, 2 * num_hidden_neurons])
+        layer_output = tf.reshape(
+            layer_output, [-1, 2 * num_units])
         # TODO(daniel): apply sigmoid or softmax?
-        logits = tf.matmul(lstm_layer_output, W) + b
+        logits = layer_output @ W + b
         batch_size = tf.shape(self.input.sequence)[0]
         logits = tf.reshape(logits, [batch_size, -1, self.NUM_CLASSES])
         logits = tf.transpose(logits, [1, 0, 2], name="logits")
@@ -484,7 +480,7 @@ class Training:
              net.target, net.global_step], feed_dict=feed_dict)
 
         evaluation.writer.add_summary(summary, step)
-        print("Evaluation ({}): {:2.0f}%".format(name, 100*error))
+        print(f"Evaluation ({nane}): {100*error:2.0f}%")
         for predicted_transcription, target_transcription \
             in zip(net.decode(prediction)[:num_examples], net.decode(target)):
             if len(predicted_transcription) > 1.5 * len(target_transcription):
@@ -531,13 +527,13 @@ class Training:
             sess.run(net.initializer)
             tf.train.start_queue_runners(sess=sess)
             if restore_from is not None and restore_from != "":
-                print ("restore model from: {}".format(restore_from))
+                print(f"restore model from: {restore_from}")
                 net._saver.restore(sess, restore_from)
 
             while True:
                 step = sess.run(net.global_step)
                 if step % 10 == 0:
-                    print("step: {:6}".format(step), flush=True)
+                    print(f"step: {step:6}", flush=True)
 
 
                 if step % self.EVALUATION_INTERVAL == 0:
