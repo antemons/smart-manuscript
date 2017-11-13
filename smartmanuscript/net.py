@@ -260,11 +260,11 @@ class NeuralNetworks:
 
             def create_cell(num_units, input_size,
                             reuse=None):
-                print(input_size)
+                #print(input_size)
                 cell = LSTMCell(num_units,
                                 state_is_tuple=True,
                                 reuse=reuse)
-                return cell
+                #return cell
                 dropout_cell = DropoutWrapper(
                     cell=cell,
                     output_keep_prob=0.5,
@@ -480,7 +480,7 @@ class Training:
              net.target, net.global_step], feed_dict=feed_dict)
 
         evaluation.writer.add_summary(summary, step)
-        print(f"Evaluation ({nane}): {100*error:2.0f}%")
+        print(f"Evaluation ({name}): {100*error:2.0f}%")
         for predicted_transcription, target_transcription \
             in zip(net.decode(prediction)[:num_examples], net.decode(target)):
             if len(predicted_transcription) > 1.5 * len(target_transcription):
