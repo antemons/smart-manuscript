@@ -908,7 +908,7 @@ class InkFeatures:
         tmp = ((x[:, np.newaxis] - x[np.newaxis, :-1]) *
                (x[:, np.newaxis] - x[np.newaxis, 1:])) < 0
         encased_from_below = 1*np.any(point_is_above*tmp*conditions, axis=1)
-        encased_from_top = 1*np.any((- point_is_above)*tmp*conditions, axis=1)
+        encased_from_top = 1*np.any((~point_is_above)*tmp*conditions, axis=1)
         encased = np.column_stack([encased_from_below, encased_from_top])
         return encased
 
