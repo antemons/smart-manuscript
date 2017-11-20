@@ -25,16 +25,16 @@ Note, it can only transcribe online handwriting (generated e.g. by smart pens) b
 
 ### Usage
 
-#### Transcript handwritten notes
+#### Transcribe handwritten notes
 
-Transcript the handwritten file (PDF or a SVG, generated e.g. by smart pens) and 
+Transcribe the handwritten file (PDF or a SVG, generated e.g. by smart pens) and 
 generate a PDF which is searchable and where text can be copied from.
 
     transcribe data/sample_text/The_Zen_of_Python.pdf output.pdf
 
 #### Handwritten input
 
-A simple application that transcripts handwritten input (e.g. from a digitizer pen):
+A simple application that transcribes handwritten input (e.g. from a digitizer pen):
 
     manuscript-writer
 
@@ -42,7 +42,7 @@ The input will be copied into the clipboard.
 
 #### Train new model
 
- 1. Get training and test data:
+ 1. Download and extract training and test data:
     
     a. You can use the [IAMonDo-db-1.0](http://www.iapr-tc11.org/dataset/IAMonDo/IAMonDo-db-1.0.tar.gz) database to train and validate the model. Place the unzipped folder IAMonDo-db-1.0 in the folder data. 
     
