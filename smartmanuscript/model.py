@@ -387,9 +387,12 @@ class Training:
     EVALUATION_BATCH_SIZE = 300
     DEFAULT_BATCH_SIZE = 50
 
-    IAM_TEST_SET = [line.rstrip("\n").replace(".inkml" , "")
-                    for line in open("data/IAMonDo-db-1.0/0.set", "r")]
     IBM_TEST_SET = ["GPIquery_01.tfrecords", "MVLquery_50.tfrecords"]
+
+    @property
+    def IAM_TEST_SET(self):
+        return [line.rstrip("\n").replace(".inkml" , "")
+                        for line in open("data/IAMonDo-db-1.0/0.set", "r")]
 
     def __init__(self, data_path="tmp"):
         self._data_path = data_path
