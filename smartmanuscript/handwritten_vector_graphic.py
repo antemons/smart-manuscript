@@ -41,13 +41,11 @@ def load(filename):
 
     Args:
         filename (str): path to the file (either PDF or SVG)
-        transcription_file (str): if given, the file with the
-            truth transcription of the handwritten note in the svg_file
 
     Returns:
-        strokes if transcription_file is None else (stroke, transcription) with
+        tuple (strokes, page_size):
             strokes (list of array[N,2]): the ink
-            transcription (list of str): the transcription
+            page_size: tuple (width, height) are the dimensions
     """
 
     if filename.endswith('.pdf') or filename.endswith('.PDF'):
