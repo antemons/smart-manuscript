@@ -27,6 +27,7 @@ from svgpathtools import svg2paths
 from os.path import basename
 import subprocess
 import re
+from .stroke_features import InkPage
 
 from .utils import Transformation
 
@@ -105,7 +106,7 @@ def _read_svg(filename, is_handwritten=None):
                 parameters = np.array(
                     [float(p) for p in parameters_str.split(",")])
                 stroke = Transformation(parameters[[0, 1, 4, 2, 3, 5]]) @ stroke
-        stroke = Transformation([1, 0, 0, 0, -1, HEIGHT]) @ stroke
+        # stroke = Transformation([1, 0, 0, 0, -1, HEIGHT]) @ stroke
         strokes.append(stroke)
     return strokes, (WIDTH, HEIGHT)
 
@@ -124,14 +125,11 @@ def _read_pdf(filename, is_handwritten=None):
     return _read_svg(svg_filename, is_handwritten)
 
 
-def main():
+def main(svg_filename):
     """ show sample handwritten notes """
-    from tensorflow.python.platform.app import flags
-    FLAGS = flags.FLAGS
-    flags.DEFINE_string(
-        "file", "sample_text/The_Zen_of_Python.pdf",
-        "file to show features (either PDF or SVG)")
-    ink = load(FLAGS.file)
+
+    strokes, page_size = load(svg_filename)
+    ink = InkPage(strokes, page_size)
     ink.plot_pylab()
     plt.show()
 
@@ -141,4 +139,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    from tensorflow.python.platform.app import flags
+    FLAGS = flags.FLAGS
+    flags.DEFINE_string(
+        "file", "sample_text/The_Zen_of_Python.pdf",
+        "file to show features (either PDF or SVG)")
+    main(FLAGS.file)
