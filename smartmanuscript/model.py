@@ -20,17 +20,20 @@
     along with Smart Manuscript.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import numpy as np
+import os.path
+import glob
 from collections import namedtuple
 from scipy.sparse import csc_matrix
 import tensorflow as tf
 from tensorflow.python.platform.app import flags
 from tensorflow.python.ops import ctc_ops as ctc
+from tensorflow.python.ops.ctc_ops import ctc_beam_search_decoder
 from tensorflow.contrib.rnn import LSTMCell
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner
-import numpy as np
-import glob
-import os.path
+
+#from tensorflow.nn.rnn_cell import LSTMCell
 
 from .utils import cached_property, colored_str_comparison
 
@@ -117,10 +120,7 @@ def record_to_batch(filenames=None, batch_size=5,
                 'label': tf.VarLenFeature(tf.int64)})
         length = tf.shape(sequence['input'])[0]
         label = context['label']
-        #label = tf.Print(label, data=label, message="asd")
-        #label_dense = sequence['label']
         input_ = sequence['input']
-        #length = tf.Print(length, data=[label.values], message="asd")
 
         return Example(
             target=label,
@@ -186,176 +186,195 @@ def record_to_batch(filenames=None, batch_size=5,
 
 
 class NeuralNetworks:
-    """ a CTC-BLSTM neural network to transcript handwriting
+    """ A recurrent neural network infers labels for a given sequence.
 
     """
     BATCH_SIZE = None
     MAX_INPUT_LEN = None
-
+    NUM_OF_PROPOSALS = 3
+    DEFAULT_ALPHABET = list("abcdefghijklmnopqrstuvwxyz"
+                            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                            "1234567890 ,.:;*+()/!?+-'\"$")
     def __init__(self, encoder, name,
                  input_=None, target=None,
                  lstm_sizes=[128, 128],
                  share_param_first_layer=True):
         self.encoder = encoder
-        self._lstm_sizes = lstm_sizes
-        self.NUM_CLASSES = len(self.encoder.alphabet) + 1
+        self.input = self._get_input_placeholder(input_)
+        self.target = self._get_target_placeholder(target)
+        self.logits = self._forward_pass(*self.input, lstm_sizes, self.NUM_CLASSES, share_param_first_layer)
+        self.tokens, self.log_prob = self._get_labels(self.logits, self.input.length, self.NUM_OF_PROPOSALS)
+        self.labels = self._decode(self.tokens)
+        self._most_likely_tokens = self.tokens[0]
+        self.loss = self._get_loss(self.target, self.logits, self.input.length)
         self.path = "graphs/{}/".format(name)
         self._share_param_first_layer = share_param_first_layer
         tf.logging.set_verbosity(tf.logging.DEBUG)
-        self._input = input_
-        self._target = target
-        self._build_tensors()
-        print(self)
+        #self._target = target
+        self.global_step = tf.Variable(0, name='global_step', trainable=False)
+        self.learning_rate = tf.placeholder(tf.float32, [], name="learning_rate")
+        self.train_step = self._get_train_op(self.loss, self.global_step, self.learning_rate)
+        self.error = self._get_error(self._most_likely_tokens, self.target)
+        self._saver = tf.train.Saver(
+            (tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES) +
+             tf.get_collection('alphabet')),
+            keep_checkpoint_every_n_hours=0.5)
+        self.initializer = self._get_initializer()
+        self.summary = tf.summary.merge_all()
+        #print(self)
+
+    @staticmethod
+    def _decode(tokens, alphabet=DEFAULT_ALPHABET):
+        with tf.variable_scope("decode"):
+            character_lookup = tf.Variable(alphabet, trainable=False)
+            tf.add_to_collection('alphabet', character_lookup)
+            n_th_labels = []
+            for n_th_prediction in tokens:
+                values = tf.gather(character_lookup, n_th_prediction.values)
+                labels_sparse = tf.SparseTensor(
+                    indices=n_th_prediction.indices,
+                    values=values,
+                    dense_shape=n_th_prediction.dense_shape)
+                labels_dense = tf.sparse_tensor_to_dense(labels_sparse, "")
+                labels = tf.reduce_join(labels_dense, axis=-1)
+                n_th_labels.append(labels)
+        return n_th_labels
+
+    @staticmethod
+    def _get_labels(logits, lengths, num_proposals):
+        with tf.variable_scope("beam_search"):
+            labels, log_prob = ctc_beam_search_decoder(
+                logits, lengths,
+                top_paths=num_proposals,
+                merge_repeated=False)
+        return labels, log_prob
+    #predictions, predictions_prob = self.session.run(
+    #        beam_search, feed_dict=feed_dict)
+    #prediction = predictions[0].values)
+
+    @property
+    def NUM_CLASSES(self):
+        return len(self.encoder.alphabet) + 1
 
     def __str__(self):
-        return "CTC-BLSTM with {} neurons per LSTM cell"\
-            .format(self._lstm_sizes)
+        return "CTC-BLSTM"
 
-    def _build_tensors(self):
-        self.train_step
-        self.error
+    #def _build_tensors(self):
         #_ = self.initializer
 
-    @cached_property
-    def input(self):
-        if self._input is not None:
-            sequence = tf.placeholder_with_default(
-                self._input.sequence, name="input_sequence",
-                shape=[self.BATCH_SIZE, self.MAX_INPUT_LEN, NUM_FEATURES])
-            length = tf.placeholder_with_default(
-                self._input.length, shape=(self.BATCH_SIZE),
-                name="input_seq_length")
-            return Input(sequence=sequence, length=length)
-        else:
-            sequence = tf.placeholder(
-                dtype=tf.float32, name="input_sequence",
-                shape=[self.BATCH_SIZE, self.MAX_INPUT_LEN, NUM_FEATURES])
-            length = tf.placeholder(
-                dtype=tf.int32, shape=(self.BATCH_SIZE),
-                name="input_seq_length")
-            return Input(sequence=sequence, length=length)
 
-    @cached_property
-    def target(self):
-        if self._target is not None:
-            return self._target
-        else:
-            return tf.SparseTensor(self.target_decomposed.indices,
-                                   self.target_decomposed.values,
-                                   self.target_decomposed.shape)
+    def _get_input_placeholder(self, input_):
+        with tf.variable_scope("input"):
+            if input_ is not None:
+                sequence = tf.placeholder_with_default(
+                    input_.sequence, name="input_sequence",
+                    shape=[self.BATCH_SIZE, self.MAX_INPUT_LEN, NUM_FEATURES])
+                length = tf.placeholder_with_default(
+                    input_.length, shape=(self.BATCH_SIZE),
+                    name="input_seq_length")
+            else:
+                sequence = tf.placeholder(
+                    dtype=tf.float32, name="input_sequence",
+                    shape=[self.BATCH_SIZE, self.MAX_INPUT_LEN, NUM_FEATURES])
+                length = tf.placeholder(
+                    dtype=tf.int32, shape=(self.BATCH_SIZE),
+                    name="input_seq_length")
+        return Input(sequence=sequence, length=length)
 
-    @cached_property
-    def target_decomposed(self):
-        indices = tf.placeholder(
-            tf.int64, name="target_indices")
-        values = tf.placeholder(tf.int64, name="target_values")
-        shape = tf.placeholder(tf.int64, name="target_shape")
-        return Target(indices=indices, values=values, shape=shape)
+    @staticmethod
+    def _get_target_placeholder(target):
+        with tf.variable_scope("target"):
+            if target is None:
+                target = tf.SparseTensor(
+                    tf.placeholder(tf.int64, name="target_indices"),
+                    tf.placeholder(tf.int64, name="target_values"),
+                    tf.placeholder(tf.int64, name="target_shape"))
+        return target
 
-    @cached_property
-    def logits(self):
-        lstm_layer_input = self.input.sequence
-        for n_layer, num_hidden_neurons in enumerate(self._lstm_sizes):
+    @staticmethod
+    def _forward_pass(inputs, lengths, lstm_sizes, num_classes, share_param_first_layer):
+        #with tf.variable_scope("forward_pass"):
+        lstm_layer_input = inputs
+        for n_layer, num_hidden_neurons in enumerate(lstm_sizes):
             # TODO: define new OpenLSTMCell(LSTMCell)
             # TODO(dv): add dropout?
             lstm_cell_fw = LSTMCell(
                 num_hidden_neurons, state_is_tuple=True)
-            if n_layer != 0 or not self._share_param_first_layer:
+            if n_layer != 0 or not share_param_first_layer:
                 lstm_cell_bw = LSTMCell(
                     num_hidden_neurons, state_is_tuple=True)
             else:
                 lstm_cell_bw = lstm_cell_fw
-            outputs, output_states = tf.nn.bidirectional_dynamic_rnn(
+            outputs, _ = tf.nn.bidirectional_dynamic_rnn(
                 lstm_cell_fw, lstm_cell_bw,
                 inputs=lstm_layer_input, dtype=tf.float32,
                 scope='BLSTM_' + str(n_layer + 1),
-                sequence_length=self.input.length)
-            output_fw = outputs[0]
-            output_bw = outputs[1]
-            lstm_layer_output = tf.concat([output_fw, output_bw], 2)
+                sequence_length=lengths)
+                #time_major=True)
+            #output_fw = outputs[0]
+            #output_bw = outputs[1]
+            lstm_layer_output = tf.concat(outputs, 2)
             lstm_layer_input = lstm_layer_output
-        W = tf.Variable(
-            tf.truncated_normal([2 * num_hidden_neurons, self.NUM_CLASSES],
-                                stddev=0.1))
-        b = tf.Variable(tf.constant(0.1, shape=[self.NUM_CLASSES]))
-        lstm_layer_output = tf.reshape(
-            lstm_layer_output, [-1, 2 * num_hidden_neurons])
-        # TODO(daniel): apply sigmoid or softmax?
-        logits = tf.matmul(lstm_layer_output, W) + b
-        batch_size = tf.shape(self.input.sequence)[0]
-        logits = tf.reshape(logits, [batch_size, -1, self.NUM_CLASSES])
+        # NeuralNetworks.tmp = lstm_layer_output
+        # W = tf.Variable(
+        #    tf.truncated_normal([2 * num_hidden_neurons, num_classes],
+        #                        stddev=0.1))
+        # b = tf.Variable(tf.constant(0.1, shape=[num_classes]))
+        # print(lstm_layer_output.shape)
+        # lstm_layer_output = tf.reshape(
+        #    lstm_layer_output, [-1, 2 * num_hidden_neurons])
+        # print(lstm_layer_output.shape)
+        # #TODO(daniel): apply sigmoid or softmax?
+        # logits = tf.matmul(lstm_layer_output, W) + b
+        # batch_size = tf.shape(inputs)[0]
+        # logits = tf.reshape(logits, [batch_size, -1, num_classes])
+        logits = tf.layers.dense(lstm_layer_output, num_classes)
         logits = tf.transpose(logits, [1, 0, 2], name="logits")
         return logits
 
-    @cached_property
-    def prediction(self):
-        prediction = ctc.ctc_beam_search_decoder(
-            self.logits, self.input.length, top_paths=1,
-            merge_repeated=False)[0][0]
-        return prediction
-
     def decode(self, prediction):
-        labels = csc_matrix((prediction.values, prediction.indices.transpose()),
-                            shape=prediction.dense_shape)
-        if labels.shape[1] == 0:
-            return labels.shape[0] * [""]
-        transcriptions = []
-        for i in range(labels.shape[0]):
-            row = labels.getrow(i)
-            label = row.toarray()[0][:row.nnz]
-            transcription = self.encoder.decode(label)
-            transcriptions.append(transcription)
+        with tf.variable_scope("decode_tokens"):
+            labels = csc_matrix((prediction.values, prediction.indices.transpose()),
+                                shape=prediction.dense_shape)
+            if labels.shape[1] == 0:
+                return labels.shape[0] * [""]
+            transcriptions = []
+            for i in range(labels.shape[0]):
+                row = labels.getrow(i)
+                label = row.toarray()[0][:row.nnz]
+                transcription = self.encoder.decode(label)
+                transcriptions.append(transcription)
         return transcriptions
 
-    @cached_property
-    def loss(self):
-        loss = tf.reduce_mean(ctc.ctc_loss(
-            tf.to_int32(self.target), self.logits,  self.input.length,
-            ctc_merge_repeated=False))
-        tf.summary.scalar('loss', loss)
+    @staticmethod
+    def _get_loss(target, logits, lengths):
+        with tf.variable_scope("loss"):
+            loss = tf.reduce_mean(ctc.ctc_loss(
+                tf.to_int32(target), logits, lengths,
+                ctc_merge_repeated=False))
+            tf.summary.scalar('loss', loss)
         return loss
 
-    @cached_property
-    def train_step(self):
+    @staticmethod
+    def _get_train_op(loss, global_step, learning_rate):
         """ return function to perform a single training step
         """
-        optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
-        train_step = optimizer.minimize(self.loss,
-                                        global_step=self.global_step)
-        return train_step
+        with tf.variable_scope("train_op"):
+            optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+            train_op = optimizer.minimize(loss,
+                                            global_step=global_step)
+        return train_op
 
-    @cached_property
-    def error(self):
-        error = tf.reduce_mean(tf.edit_distance(self.prediction, self.target))
+    @staticmethod
+    def _get_error(prediction, target):
+        with tf.variable_scope("error"):
+            error = tf.reduce_mean(tf.edit_distance(prediction, target))
         tf.summary.scalar('error', error)
         return error
 
-    @cached_property
-    def global_step(self):
-        return tf.Variable(0, name='global_step', trainable=False)
-
-    @cached_property
-    def learning_rate(self):
-        # learning_rate_default = tf.constant(self.LEARNING_RATE[0])
-        # learning_rate_fine = tf.constant(self.LEARNING_RATE[1])
-        # step_threshold = tf.constant(self.LEARNING_RATE[2])
-        #
-        # learning_rate =  tf.cond(tf.less(self.global_step, step_threshold),
-        #                          lambda: learning_rate_default,
-        #                          lambda: learning_rate_fine,
-        #                          name="learning_rate")
-        learning_rate = tf.placeholder(tf.float32, [], name="learning_rate")
-        #tf.summary.scalar('learning_rate', learning_rate)
-        return learning_rate
-
-    @cached_property
-    def initializer(self):
+    def _get_initializer(self):
         return [tf.global_variables_initializer(),
-                tf.local_variables_initializer()]#()initialize_all_variables
-
-    @cached_property
-    def _saver(self):
-        return tf.train.Saver(keep_checkpoint_every_n_hours=0.5)
+                tf.local_variables_initializer()]
 
     def save_meta(self, name=None):
         if name is None:
@@ -365,19 +384,15 @@ class NeuralNetworks:
         self.encoder.save(self.path)
         print("graph and encoder have been saved")
 
-    def save_checkpoint(self, sess, global_step=None):
-        #if name is None:
+    def save_checkpoint(self, sess, global_step=None, path=None):
+        path = path or self.path
         name = "model.ckpt"
         path = os.path.join(self.path, name)
         self._saver.save(
             sess, path, global_step=global_step)
-        self.encoder.save(self.path)
+        #self.encoder.save()
         print("variables have been saved")
 
-    @cached_property
-    def summary(self):
-        self.error, self.loss
-        return tf.summary.merge_all()
 
 
 class Training:
