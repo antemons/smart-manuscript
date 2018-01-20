@@ -24,12 +24,9 @@ import numpy as np
 import os.path
 import glob
 from collections import namedtuple
-from scipy.sparse import csc_matrix
+#from scipy.sparse import csc_matrix
 import tensorflow as tf
 from tensorflow.python.platform.app import flags
-from tensorflow.python.ops import ctc_ops as ctc
-from tensorflow.python.ops.ctc_ops import ctc_beam_search_decoder
-from tensorflow.contrib.rnn import LSTMCell
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner
 
@@ -243,7 +240,7 @@ class NeuralNetworks:
     @staticmethod
     def _get_labels(logits, lengths, num_proposals):
         with tf.variable_scope("beam_search"):
-            labels, log_prob = ctc_beam_search_decoder(
+            labels, log_prob = tf.nn.ctc_beam_search_decoder(
                 logits, lengths,
                 top_paths=num_proposals,
                 merge_repeated=False)
@@ -298,10 +295,10 @@ class NeuralNetworks:
         for n_layer, num_hidden_neurons in enumerate(lstm_sizes):
             # TODO: define new OpenLSTMCell(LSTMCell)
             # TODO(dv): add dropout?
-            lstm_cell_fw = LSTMCell(
+            lstm_cell_fw = tf.nn.rnn_cell.LSTMCell(
                 num_hidden_neurons, state_is_tuple=True)
             if n_layer != 0 or not share_param_first_layer:
-                lstm_cell_bw = LSTMCell(
+                lstm_cell_bw = tf.nn.rnn_cell.LSTMCell(
                     num_hidden_neurons, state_is_tuple=True)
             else:
                 lstm_cell_bw = lstm_cell_fw
@@ -332,24 +329,24 @@ class NeuralNetworks:
         logits = tf.transpose(logits, [1, 0, 2], name="logits")
         return logits
 
-    def decode(self, prediction):
-        with tf.variable_scope("decode_tokens"):
-            labels = csc_matrix((prediction.values, prediction.indices.transpose()),
-                                shape=prediction.dense_shape)
-            if labels.shape[1] == 0:
-                return labels.shape[0] * [""]
-            transcriptions = []
-            for i in range(labels.shape[0]):
-                row = labels.getrow(i)
-                label = row.toarray()[0][:row.nnz]
-                transcription = self.encoder.decode(label)
-                transcriptions.append(transcription)
-        return transcriptions
+    # def decode(self, prediction):
+    #     with tf.variable_scope("decode_tokens"):
+    #         labels = csc_matrix((prediction.values, prediction.indices.transpose()),
+    #                             shape=prediction.dense_shape)
+    #         if labels.shape[1] == 0:
+    #             return labels.shape[0] * [""]
+    #         transcriptions = []
+    #         for i in range(labels.shape[0]):
+    #             row = labels.getrow(i)
+    #             label = row.toarray()[0][:row.nnz]
+    #             transcription = self.encoder.decode(label)
+    #             transcriptions.append(transcription)
+    #     return transcriptions
 
     @staticmethod
     def _get_loss(target, logits, lengths):
         with tf.variable_scope("loss"):
-            loss = tf.reduce_mean(ctc.ctc_loss(
+            loss = tf.reduce_mean(tf.nn.ctc_loss(
                 tf.to_int32(target), logits, lengths,
                 ctc_merge_repeated=False))
             tf.summary.scalar('loss', loss)
