@@ -44,7 +44,7 @@ NUM_FEATURES = 15  # see stroke_features
 
 Batch = namedtuple('Batch', ('target', 'input'))
 Target = namedtuple('Target', ('indices', 'values', 'shape'))
-Input = namedtuple('Input', ('sequence, length'))
+Sequence = namedtuple('Sequence', ('values, length'))
 
 
 class Example:
@@ -84,7 +84,7 @@ class Example:
             target=tf.SparseTensor(indices=tensors[0],
                            values=tensors[1],
                            dense_shape=tensors[2]),
-            input_=Input(sequence=tensors[3], length=tensors[4]))
+            input_=Sequence(values=tensors[3], length=tensors[4]))
 
 
 def record_to_batch(filenames=None, batch_size=5,
@@ -121,7 +121,7 @@ def record_to_batch(filenames=None, batch_size=5,
 
         return Example(
             target=label,
-            input_=Input(sequence=input_, length=length))
+            input_=Sequence(values=input_, length=length))
 
     def shuffled(tensors):
         """ return the tensor(s) in shuffled order
@@ -140,10 +140,6 @@ def record_to_batch(filenames=None, batch_size=5,
             tensor_shuffled.set_shape(tensor.get_shape())
         return tensors_shuffled
 
-    # def shuffled_example(example):
-    #     """ return the examples in shuffled order
-    #     """
-    #
     def batched_example(example, batch_size):
         """ return examples in minibatches
         """
@@ -154,7 +150,7 @@ def record_to_batch(filenames=None, batch_size=5,
             batch_size=batch_size, capacity=1000, dynamic_pad=True,
             allow_smaller_final_batch=allow_smaller_final_batch)
         return Batch(target=target,
-                     input=Input(sequence=sequence, length=length))
+                     input=Sequence(values=sequence, length=length))
 
     if compose is None:
         example = get_example_from_records(filenames, num_epochs)
@@ -197,12 +193,40 @@ class InferenceModel:
                  lstm_sizes,
                  share_param_first_layer=True):
         self.encoder = encoder
-        self.input = self._get_input_placeholder(input_)
+        #self.inputs = self._get_input_placeholder()
+
+        with tf.variable_scope("inputs"):
+            self.iterator = self._get_iterator()
+            features, features_length, self.targets = self.iterator.get_next()
+            self.input = Sequence(features, features_length)
+
         self.logits = self._forward_pass(*self.input, lstm_sizes, self.NUM_CLASSES, share_param_first_layer)
         self.tokens, self.log_prob = self._get_labels(self.logits, self.input.length, self.NUM_OF_PROPOSALS)
         self.labels = self._decode(self.tokens)
         self._most_likely_tokens = self.tokens[0]
         self._saver = self._get_saver()
+        # TODO(dv) improve make graph def
+
+    def infer(self, features, ckpt_path, tensors=None):
+        feed_dict = {
+            self.input.values: np.expand_dims(features, 0),
+            self.input.length: np.array([len(features)])}
+
+        tensors = tensors or self.labels
+        with tf.Session() as sess:
+            self._saver.restore(sess, ckpt_path)
+            evaled_tensors = sess.run(tensors, feed_dict=feed_dict)
+        return evaled_tensors
+
+    @classmethod
+    def _get_iterator(cls):
+        iterator = tf.contrib.data.Iterator.from_structure(
+            output_types=(tf.float32, tf.int32, tf.string),
+            output_shapes=(tf.TensorShape([None, None, NUM_FEATURES]),
+                           tf.TensorShape([None]),
+                           tf.TensorShape([None])))
+        return iterator
+
 
 
     @staticmethod
@@ -239,23 +263,16 @@ class InferenceModel:
     def __str__(self):
         return "CTC-BLSTM"
 
-    def _get_input_placeholder(self, input_):
+    @classmethod
+    def _get_input_placeholder(cls):
         with tf.variable_scope("input"):
-            if input_ is not None:
-                sequence = tf.placeholder_with_default(
-                    input_.sequence, name="input_sequence",
-                    shape=[self.BATCH_SIZE, self.MAX_INPUT_LEN, NUM_FEATURES])
-                length = tf.placeholder_with_default(
-                    input_.length, shape=(self.BATCH_SIZE),
-                    name="input_seq_length")
-            else:
-                sequence = tf.placeholder(
-                    dtype=tf.float32, name="input_sequence",
-                    shape=[self.BATCH_SIZE, self.MAX_INPUT_LEN, NUM_FEATURES])
-                length = tf.placeholder(
-                    dtype=tf.int32, shape=(self.BATCH_SIZE),
-                    name="input_seq_length")
-        return Input(sequence=sequence, length=length)
+            sequence = tf.placeholder(
+                dtype=tf.float32, name="input_sequence",
+                shape=[cls.BATCH_SIZE, cls.MAX_INPUT_LEN, NUM_FEATURES])
+            length = tf.placeholder(
+                dtype=tf.int32, shape=(cls.BATCH_SIZE),
+                name="input_sequence_length")
+        return Sequence(values=sequence, length=length)
 
     @staticmethod
     def _forward_pass(inputs, lengths, lstm_sizes, num_classes, share_param_first_layer):
@@ -388,7 +405,7 @@ class TrainingModel(EvaluationModel):
             var_list,
             keep_checkpoint_every_n_hours=0.5)
         return saver
-                
+
 
 NeuralNetworks = TrainingModel
 
