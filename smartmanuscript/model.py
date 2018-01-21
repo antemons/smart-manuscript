@@ -24,14 +24,10 @@ import numpy as np
 import os.path
 import glob
 from collections import namedtuple
-#from scipy.sparse import csc_matrix
 import tensorflow as tf
 from tensorflow.python.platform.app import flags
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner
-
-#from tensorflow.nn.rnn_cell import LSTMCell
-
 from .utils import cached_property, colored_str_comparison
 
 
@@ -187,25 +183,30 @@ class InferenceModel:
     NUM_OF_PROPOSALS = 3
     DEFAULT_ALPHABET = list("abcdefghijklmnopqrstuvwxyz"
                             "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                            "1234567890 ,.:;*+()/!?+-'\"$")
+                            "1234567890 ,.:;*+()/!?&-'\"$")
 
-    def __init__(self, encoder, input_,
-                 lstm_sizes,
-                 share_param_first_layer=True):
-        self.encoder = encoder
-        #self.inputs = self._get_input_placeholder()
+    def __init__(self, lstm_sizes,
+                 share_param_first_layer):
+
 
         with tf.variable_scope("inputs"):
             self.iterator = self._get_iterator()
             features, features_length, self.targets = self.iterator.get_next()
             self.input = Sequence(features, features_length)
-
+        self.alphabet = self._get_alphabet()
         self.logits = self._forward_pass(*self.input, lstm_sizes, self.NUM_CLASSES, share_param_first_layer)
-        self.tokens, self.log_prob = self._get_labels(self.logits, self.input.length, self.NUM_OF_PROPOSALS)
-        self.labels = self._decode(self.tokens)
+        self.tokens, self.log_prob = self._get_labels(*self.logits, self.NUM_OF_PROPOSALS)
+        self.labels = self._decode(self.tokens, self.alphabet)
         self._most_likely_tokens = self.tokens[0]
         self._saver = self._get_saver()
-        # TODO(dv) improve make graph def
+
+    @classmethod
+    def _get_alphabet(cls):
+        alphabet = tf.Variable(cls.DEFAULT_ALPHABET,
+                               trainable=False,
+                               name='alphabet')
+        tf.add_to_collection('alphabet', alphabet)
+        return alphabet
 
     def infer(self, features, ckpt_path, tensors=None):
         feed_dict = {
@@ -227,17 +228,12 @@ class InferenceModel:
                            tf.TensorShape([None])))
         return iterator
 
-
-
     @staticmethod
-    def _decode(tokens, alphabet=DEFAULT_ALPHABET):
+    def _decode(tokens, alphabet):
         with tf.variable_scope("decode"):
-            character_lookup = tf.Variable(
-                alphabet, trainable=False, name='alphabet')
-            tf.add_to_collection('alphabet', character_lookup)
             n_th_labels = []
             for n_th_prediction in tokens:
-                values = tf.gather(character_lookup, n_th_prediction.values)
+                values = tf.gather(alphabet, n_th_prediction.values)
                 labels_sparse = tf.SparseTensor(
                     indices=n_th_prediction.indices,
                     values=values,
@@ -258,21 +254,21 @@ class InferenceModel:
 
     @property
     def NUM_CLASSES(self):
-        return len(self.encoder.alphabet) + 1
+        return int(self.alphabet.shape[0]) + 1
 
     def __str__(self):
         return "CTC-BLSTM"
 
-    @classmethod
-    def _get_input_placeholder(cls):
-        with tf.variable_scope("input"):
-            sequence = tf.placeholder(
-                dtype=tf.float32, name="input_sequence",
-                shape=[cls.BATCH_SIZE, cls.MAX_INPUT_LEN, NUM_FEATURES])
-            length = tf.placeholder(
-                dtype=tf.int32, shape=(cls.BATCH_SIZE),
-                name="input_sequence_length")
-        return Sequence(values=sequence, length=length)
+    # @classmethod
+    # def _get_input_placeholder(cls):
+    #     with tf.variable_scope("input"):
+    #         sequence = tf.placeholder(
+    #             dtype=tf.float32, name="input_sequence",
+    #             shape=[cls.BATCH_SIZE, cls.MAX_INPUT_LEN, NUM_FEATURES])
+    #         length = tf.placeholder(
+    #             dtype=tf.int32, shape=(cls.BATCH_SIZE),
+    #             name="input_sequence_length")
+    #     return Sequence(values=sequence, length=length)
 
     @staticmethod
     def _forward_pass(inputs, lengths, lstm_sizes, num_classes, share_param_first_layer):
@@ -295,9 +291,13 @@ class InferenceModel:
                     sequence_length=lengths)
                 lstm_layer_output = tf.concat(outputs, 2)
                 lstm_layer_input = lstm_layer_output
-            logits = tf.layers.dense(lstm_layer_output, num_classes)
-            logits = tf.transpose(logits, [1, 0, 2], name="logits")
-        return logits
+            output_values = tf.layers.dense(lstm_layer_output, num_classes)
+            output_values = tf.transpose(output_values, [1, 0, 2], name="output")
+            output_lengths = tf.identity(lengths, name="lengths")
+        with tf.variable_scope("logits"):
+            logit_values = tf.identity(output_values, name="values")
+            logit_lengths = tf.identity(output_lengths, name="lengths")
+        return Sequence(logit_values, logit_lengths)
 
     def save_meta(self, name=None):
         if name is None:
@@ -317,53 +317,69 @@ class InferenceModel:
 
 class EvaluationModel(InferenceModel):
 
-    def __init__(self,encoder, input_,
+    def __init__(self,
                  lstm_sizes,
-                 share_param_first_layer=True,
-                 target=None):
+                 share_param_first_layer):
 
-        super().__init__(encoder, input_, lstm_sizes, share_param_first_layer)
-        self.target = self._get_target_placeholder(target)
-        self._share_param_first_layer = share_param_first_layer
-        self.error = self._get_error(self._most_likely_tokens, self.target)
-        self.loss = self._get_loss(self.target, self.logits, self.input.length)
+        super().__init__(lstm_sizes, share_param_first_layer)
 
+        self.target_tokens = self._encode(self.targets, self.alphabet)
+        self.error = self._get_error(self._most_likely_tokens, self.target_tokens)
+        self.loss = self._get_loss(self.target_tokens, *self.logits)
 
     @staticmethod
-    def _get_loss(target, logits, lengths):
+    def _encode(labels, character_lookup):
+        with tf.variable_scope("encode"):
+            labels_splitted = tf.string_split(labels, delimiter='')
+            table = tf.contrib.lookup.index_table_from_tensor(
+                mapping=character_lookup)
+            tokens = table.lookup(labels_splitted)
+        return tokens
+
+    def get_evaluation(self, dataset):
+        feed_iterator_from_dataset = self.iterator.make_initializer(dataset)
+        def evaluation(model_path):
+            with tf.Session() as sess:
+                self._saver.restore(sess, model_path)
+                sess.run(feed_iterator_from_dataset)
+                tensors = self.error, self.labels, self.loss
+                evaled_tensors = sess.run(tensors)
+            return evaled_tensors
+        return evaluation
+
+    @staticmethod
+    def _get_loss(targets, logits, lengths):
         with tf.variable_scope("loss"):
             loss = tf.reduce_mean(tf.nn.ctc_loss(
-                tf.to_int32(target), logits, lengths,
+                tf.to_int32(targets), logits, lengths,
                 ctc_merge_repeated=False))
             tf.summary.scalar('loss', loss)
         return loss
 
-    @staticmethod
-    def _get_target_placeholder(target):
-        with tf.variable_scope("target"):
-            if target is None:
-                target = tf.SparseTensor(
-                    tf.placeholder(tf.int64, name="target_indices"),
-                    tf.placeholder(tf.int64, name="target_values"),
-                    tf.placeholder(tf.int64, name="target_shape"))
-        return target
+    # @staticmethod
+    # def _get_target_placeholder(target):
+    #     with tf.variable_scope("target"):
+    #         if target is None:
+    #             target = tf.SparseTensor(
+    #                 tf.placeholder(tf.int64, name="target_indices"),
+    #                 tf.placeholder(tf.int64, name="target_values"),
+    #                 tf.placeholder(tf.int64, name="target_shape"))
+    #     return target
 
     @staticmethod
-    def _get_error(prediction, target):
+    def _get_error(predictions, targets):
         with tf.variable_scope("error"):
-            error = tf.reduce_mean(tf.edit_distance(prediction, target))
+            error = tf.reduce_mean(tf.edit_distance(predictions, targets))
         tf.summary.scalar('error', error)
         return error
 
 class TrainingModel(EvaluationModel):
 
 
-    def __init__(self,encoder, input_=None,
-                 lstm_sizes=[128, 128],
-                 share_param_first_layer=True,
-                 target=None):
+    def __init__(self, lstm_sizes=[128, 128],
+                 share_param_first_layer=True):
 
-        super().__init__(encoder, input_, lstm_sizes, share_param_first_layer, target)
+        super().__init__(lstm_sizes, share_param_first_layer)
         self.global_step = tf.Variable(0, name='global_step', trainable=False)
         self.learning_rate = tf.placeholder(tf.float32, [], name="learning_rate")
         self.train_step = self._get_train_op(self.loss, self.global_step, self.learning_rate)
