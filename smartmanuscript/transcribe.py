@@ -59,12 +59,12 @@ def main():
     source_manuscript = args.source
     target_manuscript = args.target
 
-
     searchable_pdf = SearchablePDF(args.model_path)
     if args.dry_run:
         reader = Reader(model_path=FLAGS.model_path)
         strokes, _ = ink_from_file(FLAGS.file)
         transcription = reader.recognize_page(strokes)
+        print(transcription)
     else:
         searchable_pdf.generate(source_manuscript, target_manuscript)
 
