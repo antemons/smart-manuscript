@@ -27,7 +27,6 @@ import os
 import tensorflow as tf
 
 from .model import TrainingModel
-#from .encoder import encoder
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
@@ -68,39 +67,6 @@ def read_flags():
     return flags.FLAGS
 
 
-
-
-# def _dataset_from_tfrecords(filenames):
-#
-# #      Dataset.list_files(...).shuffle(num_shards).
-# # Use dataset.interleave(lambda filename: tf.data.TextLineDataset(filename), cycle_length=N) to mix together records from N different shards.
-# # Use dataset.shuffle(B) to shuffle the resulting dataset. Setting B might require some experimentation, but you will p
-#
-#
-#     if all(isinstance(s, str) for s in filenames):
-#         filenames = tf.constant(filenames)
-#     dataset = tf.data.TFRecordDataset(filenames)
-#     dataset = dataset.map(_parse_function)
-#     dataset = dataset.map(
-#         lambda inputs, label: (inputs, tf.shape(inputs)[0], label))
-#     dataset = dataset.padded_batch(
-#         batch_size=10,
-#         padded_shapes=(tf.TensorShape([None, 15]),
-#                        tf.TensorShape([]),
-#                        tf.TensorShape([])))
-#     return dataset
-
-
-
-
-# def get_all_datasets(path):
-#     filenames = {}
-#     for subfolders in glob.glob(os.path.join(path, "*")):
-#         filenames[os.path.basename(subfolders)] = glob.glob(
-#             os.path.join(subfolders, "*.tfrecords"))
-#     return filenames
-
-
 def main():
     """ Train the network
     """
@@ -111,16 +77,16 @@ def main():
         share_param_first_layer=FLAGS.share_param_first_layer)
 
     train_path_patterns = [
-        #"records/train/ibm/*.tfrecords",
-        "records/train/iam_line/*.tfrecords",
-        "records/train/iam_word/*.tfrecords"]
-        #"records/train/my_train/*.tfrecords"]
+        #"records/train/ibm/*.tfrecord",
+        "records/train/iam_line/*.tfrecord",
+        "records/train/iam_word/*.tfrecord"]
+        #"records/train/my_train/*.tfrecord"]
 
     test_path_patterns = {
-        "ibm": "records/test/ibm/*.tfrecords",
-        "iam_line": "records/test/iam_line/*.tfrecords",
-        "ia_word": "records/test/iam_word/*.tfrecords",
-        "zen_test": "records/test/zen_test/*.tfrecords"}
+        "ibm": "records/test/ibm/*.tfrecord",
+        "iam_line": "records/test/iam_line/*.tfrecord",
+        "ia_word": "records/test/iam_word/*.tfrecord",
+        "zen_test": "records/test/zen_test/*.tfrecord"}
 
     model.train(
         dataset_patterns=train_path_patterns,
