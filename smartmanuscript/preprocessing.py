@@ -26,7 +26,6 @@ from collections import namedtuple
 import warnings
 
 from .stroke_features import strokes_to_features, NormalizationWarning
-from .encoder import encoder
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
@@ -51,17 +50,17 @@ def preprocessed_transcription(transcription):
     transcription = transcription.replace(b'\xc2\xb4'.decode(), "'")
     return transcription
 
-def preprocessed(example, encode, skew_is_horizontal=False):
+def preprocessed(example, skew_is_horizontal=False):
     """ convert example (TranscriptedStrokes) to LabeledFeatures
     """
     strokes, transcription = example.strokes, example.transcription
     transcription = preprocessed_transcription(transcription)  # TODO(dv): merge
     return LabeledFeatures(
-        label=encode(transcription),
+        label=transcription,
         feature=strokes_to_features(example.strokes,
                                     skew_is_horizontal=skew_is_horizontal))
 
-def preprocessed_corpus(corpus, encode, min_words=0, min_letters=1,
+def preprocessed_corpus(corpus, min_words=0, min_letters=1,
                         skew_is_horizontal=False):
     warnings.simplefilter('error', NormalizationWarning)
     result = []
@@ -95,17 +94,13 @@ def preprocessed_corpus(corpus, encode, min_words=0, min_letters=1,
 
         try:
             labeled_features = preprocessed(
-                example, encode, skew_is_horizontal=skew_is_horizontal)
+                example, skew_is_horizontal=skew_is_horizontal)
         except NormalizationWarning:
             warnings.warn(PreprocessWarning("Normalization failed",
                                             example.transcription))
             sorted_out["normalization_waring"] += 1
             continue
-        except encoder.SymbolNotInAlphabet:
-            warnings.warn(PreprocessWarning("Unknown Symbol",
-                                            example.transcription))
-            sorted_out["symbol_not_in_alphabet"] += 1
-            continue
+
 
         if (len(labeled_features.feature) < 5 or
             len(labeled_features.feature) < len(labeled_features.label)):

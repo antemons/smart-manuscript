@@ -38,7 +38,6 @@ from . import corpus_ibm
 from .corpus import Corpus, Corpora, TranscriptedStrokes
 from .handwritten_vector_graphic import load as load_pdf
 from .stroke_features import strokes_to_features, plot_features, InkPage
-from .encoder import encoder
 from .preprocessing import preprocessed_corpus
 
 def read_flags():
@@ -188,12 +187,12 @@ def create_records(
                 continue
 
             labeled_features = preprocessed_corpus(
-                corpus, encoder.encode, min_words=min_words,
+                corpus, min_words=min_words,
                 skew_is_horizontal=skew_is_horizontal)
 
             recording(labeled_features, record_filename)
 
-def print_record(filename, decode):
+def print_record(filename):
     for serialized_example in tf.python_io.tf_record_iterator(filename):
         example = tf.train.SequenceExample()
         example.ParseFromString(serialized_example)
@@ -209,7 +208,7 @@ def print_record(filename, decode):
 def main():
     FLAGS = read_flags()
     if FLAGS.show_record != "":
-        print_record(FLAGS.show_record, encoder.decode)
+        print_record(FLAGS.show_record)
     else:
         create_records(
             FLAGS.path,

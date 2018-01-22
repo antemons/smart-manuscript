@@ -165,7 +165,6 @@ class InferenceModel:
 
     def save_meta(self, path):
         self._saver.export_meta_graph(path)
-        #print("graph and encoder have been saved")
 
     def _get_saver(self):
         var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
