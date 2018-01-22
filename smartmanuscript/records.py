@@ -37,7 +37,7 @@ from . import corpus_iam
 from . import corpus_ibm
 from .corpus import Corpus, Corpora, TranscriptedStrokes
 from .handwritten_vector_graphic import load as load_pdf
-from .stroke_features import strokes_to_features, plot_features, InkPage
+from .writing import strokes_to_features, plot_features, InkPage
 from .preprocessing import preprocessed_corpus
 
 def read_flags():

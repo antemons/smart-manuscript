@@ -28,13 +28,13 @@ from collections import namedtuple
 import tensorflow as tf
 from tensorflow.python.platform.app import flags
 from .utils import cached_property, colored_str_comparison
-from . import stroke_features
+from . import writing
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
 
-NUM_FEATURES = stroke_features.InkFeatures.NUM_FEATURES
+NUM_FEATURES = writing.InkFeatures.NUM_FEATURES
 Sequence = namedtuple('Sequence', ('values, length'))
 
 def parse_tfrecords(proto):

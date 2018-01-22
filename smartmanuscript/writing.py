@@ -200,9 +200,9 @@ class Ink:
         new_strokes = np.split(new_concatenated_strokes, sections)
         return type(self)(new_strokes, is_uncorrupted=self.is_uncorrupted)
 
-def gauss(x, mu, sigma):
-    return np.exp(- (x - mu)**2 / (2 * sigma**2)) / (sigma * np.sqrt(2 * np.pi))
-
+# def gauss(x, mu, sigma):
+#     return np.exp(- (x - mu)**2 / (2 * sigma**2)) / (sigma * np.sqrt(2 * np.pi))
+#
 # class ExpectationMaximization:
 #     """ The EM-Algorithm
 #     """
@@ -259,6 +259,8 @@ class InkPage(Ink):
 
 class NormalizationWarning(Warning):
     pass
+
+warnings.simplefilter('always', NormalizationWarning)
 
 class InkNormalization:
     """ normalize a stroke by slant, skew, baseline, height, and width
@@ -475,10 +477,10 @@ class InkNormalization:
         transformation = Transformation.scale((scale_width, 1))
         return transformation @ ink, transformation
 
-normalized_ink = InkNormalization()
+normalized = InkNormalization()
 
 
-warnings.simplefilter('always', NormalizationWarning)
+
 
 
 
@@ -999,7 +1001,7 @@ def strokes_to_features(
         ret_transformation=False):
     ink = Ink.from_corrupted_stroke(strokes, skew_is_horizontal)
     if normalize:
-        ink, transformation = normalized_ink(
+        ink, transformation = normalized(
             ink, skew_is_horizontal=skew_is_horizontal)
     features = InkFeatures.ink_to_features(ink)
     if not ret_transformation:

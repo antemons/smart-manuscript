@@ -26,7 +26,7 @@ from svgpathtools import svg2paths
 import os
 import subprocess
 import re
-from .stroke_features import InkPage
+from .writing import InkPage
 
 from .utils import Transformation
 

@@ -27,7 +27,8 @@ from PyPDF2 import PdfFileWriter, PdfFileReader
 import tempfile
 
 from .handwritten_vector_graphic import load as ink_from_file
-from .stroke_features import normalized_ink, Transformation, InkPage
+from . import writing
+from utils import Transformation
 from .reader import Reader
 
 __author__ = "Daniel Vorberg"
@@ -46,7 +47,7 @@ class SearchablePDF(Reader):
         context.set_source_rgba(1, 1, 1, 1/256)  # almost invisible
         context.set_font_size(2)
         for line_ink, line_transcription in zip(page.lines, transcription):
-            ink, transformation = normalized_ink(line_ink)
+            ink, transformation = writing.normalized(line_ink)
             context.save()
             context.transform(Matrix(*(Transformation.translation(0, page.page_size[1]).parameter)))
             context.transform(Matrix(*(Transformation.mirror(0).parameter)))
@@ -78,7 +79,7 @@ class SearchablePDF(Reader):
 
     def generate(self, input_pdf, output_pdf):
         strokes, page_size = ink_from_file(input_pdf)
-        page = InkPage(strokes, page_size)
+        page = writing.InkPage(strokes, page_size)
         transcription = self.recognize_page(strokes).split("\n")
         with tempfile.TemporaryFile() as transcription_layer:
             self._generate_layer(

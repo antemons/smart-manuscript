@@ -23,15 +23,15 @@
 import tensorflow as tf
 import numpy as np
 
-from .stroke_features import strokes_to_features, InkPage
+from .writing import strokes_to_features, InkPage
 from .model import Sequence
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
 
-from . import stroke_features
-NUM_FEATURES = stroke_features.InkFeatures.NUM_FEATURES
+from . import writing
+NUM_FEATURES = writing.InkFeatures.NUM_FEATURES
 
 
 def get_dataset_from_features(generator, batch_size):

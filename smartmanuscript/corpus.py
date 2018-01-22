@@ -26,7 +26,7 @@ import glob
 import os
 from collections import namedtuple
 
-from .stroke_features import InkPage
+from .writing import InkPage
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"

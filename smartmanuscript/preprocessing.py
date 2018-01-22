@@ -25,7 +25,7 @@ from os.path import join as join_path
 from collections import namedtuple
 import warnings
 
-from .stroke_features import strokes_to_features, NormalizationWarning
+from .writing import strokes_to_features, NormalizationWarning
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
