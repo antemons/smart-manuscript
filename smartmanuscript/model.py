@@ -184,6 +184,7 @@ class EvaluationModel(InferenceModel):
         self.target_tokens = self._encode(self.targets, self.alphabet)
         self.error = self._get_error(self._most_likely_tokens, self.target_tokens)
         self.loss = self._get_loss(self.target_tokens, *self.logits)
+        self.summary = self._get_summary()
 
     def feed_iterator_from_records(self, patterns, batch_size, seed=None):
         with self.graph.as_default():
@@ -206,22 +207,26 @@ class EvaluationModel(InferenceModel):
             feed_iterator = self.iterator.make_initializer(dataset)
         return feed_iterator
 
-    def _get_summary_and_writer(self, log_path):
+    def _get_summary(self):
         with tf.name_scope('summaries'):
             for name in self.SUMMARY_SCALARS:
                 tf.summary.scalar(name, self.__getattribute__(name))
-        summary = tf.summary.merge_all()
+            summary = tf.summary.merge_all()
+        return summary
+
+    def _get_summary_and_writer(self, log_path):
         summary_writer = tf.summary.FileWriter(
             os.path.join(log_path, self.TYPE_NAME),
             flush_secs=30)
-        return summary, summary_writer
+        return summary_writer
 
     @staticmethod
     def _encode(labels, character_lookup):
         with tf.variable_scope("encode"):
             labels_splitted = tf.string_split(labels, delimiter='')
             table = tf.contrib.lookup.index_table_from_tensor(
-                mapping=character_lookup)
+                mapping=character_lookup,
+                default_value=NUM_FEATURES)  # ToDo(dv): introduce unknown symbol
             tokens = table.lookup(labels_splitted)
         return tokens
 
@@ -230,15 +235,15 @@ class EvaluationModel(InferenceModel):
             if feeder is None:
                 feeder = self.iterator.make_initializer(dataset)
             if log_path is not None:
-                summary, summary_writer = self._get_summary_and_writer(log_path)
+                summary_writer = self._get_summary_and_writer(log_path)
             else:
-                summary, summary_writer = tf.no_op(), None
+                summary_writer = tf.no_op(), None
             def evaluation(model_path, save_with_global_step=None): #todo ugly
                 with tf.Session(graph=self.graph) as sess:
                     self._saver.restore(sess, model_path)
                     sess.run(tf.get_collection(tf.GraphKeys.TABLE_INITIALIZERS))
                     sess.run(feeder)
-                    tensors = self.error, self.labels, self.loss, summary
+                    tensors = self.error, self.labels, self.loss, self.summary
                     *evaled_tensors, evaled_summary = sess.run(tensors)
                     if save_with_global_step is not None:
                         summary_writer.add_summary(evaled_summary,
@@ -252,19 +257,18 @@ class EvaluationModel(InferenceModel):
             loss = tf.reduce_mean(tf.nn.ctc_loss(
                 tf.to_int32(targets), logits, lengths,
                 ctc_merge_repeated=False))
-            tf.summary.scalar('loss', loss)
         return loss
 
     @staticmethod
     def _get_error(predictions, targets):
         with tf.variable_scope("error"):
             error = tf.reduce_mean(tf.edit_distance(predictions, targets))
-        tf.summary.scalar('error', error)
         return error
 
 class TrainingModel(EvaluationModel):
     TYPE_NAME = "training"
-    SUMMARY_SCALARS = ["loss", "error", "global_step", "global_step", "epoch"]
+    SUMMARY_SCALARS = (EvaluationModel.SUMMARY_SCALARS +
+                       ["global_step", "global_step", "epoch"])
     DEFAULT_ALPHABET = list("abcdefghijklmnopqrstuvwxyz"
                             "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                             "1234567890 ,.:;*+()/!?&-'\"$")
@@ -272,17 +276,19 @@ class TrainingModel(EvaluationModel):
     def __init__(self, lstm_sizes=[128, 128],
                  share_param_first_layer=True):
 
+        self.global_step = tf.Variable(
+            0, name='global_step', trainable=False)
+        self.epoch = tf.Variable(0, name='epoch_num', trainable=False)
+        self.increment_epoch = tf.assign_add(self.epoch, 1)
+        self.learning_rate = tf.Variable(0.003, name='learning_rate',
+                                         trainable=False)
         super().__init__(lstm_sizes, share_param_first_layer,
                          alphabet=self.DEFAULT_ALPHABET)
         self._lstm_sizes = lstm_sizes
         self._share_param_first_layer = share_param_first_layer
-        self.global_step = tf.Variable(0, name='global_step', trainable=False)
-        self.epoch = tf.Variable(0, name='epoch_num', trainable=False)
-        self.increment_epoch = tf.assign_add(self.epoch, 1)
-        self.learning_rate = tf.Variable(0.003, name='learning_rate', trainable=False)
         self.train_op = self._get_train_op(self.loss, self.global_step, self.learning_rate)
         self.initializer = self._get_initializer()
-        self.summary = tf.summary.merge_all()
+
 
     @staticmethod
     def _get_train_op(loss, global_step, learning_rate):
@@ -329,20 +335,20 @@ class TrainingModel(EvaluationModel):
             model.save_meta(os.path.join(path, "evaluation.meta"))
         feed_iterator_from_dataset = self.feed_iterator_from_records(
             dataset_patterns, batch_size=32)
-        summary, summary_writer = self._get_summary_and_writer(
+        summary_writer = self._get_summary_and_writer(
             os.path.join(path, "log", "train"))
 
-        # if test_datasets_pattern is not None:
-        #     feed_iterator_from_datasets = {
-        #         name: model.feed_iterator_from_records([pattern], 100)
-        #         for name, pattern in test_datasets_pattern.items()}
-        #     evalation_functions = [
-        #         model.get_evaluation(
-        #             feeder=feeder,
-        #             log_path=os.path.join(path, "log", "test", name))
-        #         for name, feeder in feed_iterator_from_datasets.items()]
-        # else:
-            # evalation_functions = []
+        if test_datasets_pattern is not None:
+            feed_iterator_from_datasets = {
+                name: model.feed_iterator_from_records([pattern], 100, seed=0)
+                for name, pattern in test_datasets_pattern.items()}
+            evalation_functions = [
+                model.get_evaluation(
+                    feeder=feeder,
+                    log_path=os.path.join(path, "log", "test", name))
+                for name, feeder in feed_iterator_from_datasets.items()]
+        else:
+            evalation_functions = []
 
         with tf.Session(graph=self.graph) as sess:
             #self._saver.restore(sess, model_path)
@@ -351,24 +357,19 @@ class TrainingModel(EvaluationModel):
             sess.run(feed_iterator_from_dataset)
             while sess.run(self.epoch) < epoch_num:
                 for step_in_epoch in itertools.count():
-                    # if step_in_epoch % steps_per_checkpoint == 0:
-                    #     global_step = sess.run(self.global_step)
-                    #     checkpoints_path = self._saver.save(
-                    #         sess, os.path.join(path, "model"),
-                    #         global_step=global_step)
-                    #     for evalation_function in evalation_functions:
-                    #         evalation_function(checkpoints_path, 1)
+                    if step_in_epoch % steps_per_checkpoint == 0:
+                        global_step = sess.run(self.global_step)
+                        checkpoints_path = self._saver.save(
+                            sess, os.path.join(path, "model"),
+                            global_step=global_step)
+                        for evalation_function in evalation_functions:
+                            evalation_function(checkpoints_path, global_step)
                     try:
-                        print("asd")
-                        _, global_step, evaled_summary, loss, length = sess.run(
-                                [self.train_op, self.global_step, summary, self.loss, self.input.length])
-                        print("---", length)
+                        _, global_step, evaled_summary, loss = sess.run(
+                                [self.train_op, self.global_step, self.summary, self.loss])
                         summary_writer.add_summary(evaled_summary, global_step)
-                        if step_in_epoch % steps_per_checkpoint == 0:
-                            print(sess.run(self.epoch), step_in_epoch, loss)
+                        print(sess.run(self.epoch), step_in_epoch, loss)
                     except tf.errors.OutOfRangeError:
                         sess.run(self.increment_epoch)
                         print("epoch completed")
                         break
-
-NeuralNetworks = TrainingModel

@@ -38,7 +38,7 @@ def read_flags():
         'restore_from', "",
         "optional ckpt-file to restore-from")
     flags.DEFINE_string(
-        'name', "vanilla", "Name of the network")
+        'path', "vanilla", "Name of the network")
     flags.DEFINE_string(
         'lstm_sizes', "[120, 120]",  "List of LSTM-layer sizes (json)")
     flags.DEFINE_boolean(
@@ -77,10 +77,10 @@ def main():
         share_param_first_layer=FLAGS.share_param_first_layer)
 
     train_path_patterns = [
-        #"records/train/ibm/*.tfrecord",
+        "records/train/ibm/*.tfrecord",
         "records/train/iam_line/*.tfrecord",
-        "records/train/iam_word/*.tfrecord"]
-        #"records/train/my_train/*.tfrecord"]
+        "records/train/iam_word/*.tfrecord",
+        "records/train/my_train/*.tfrecord"]
 
     test_path_patterns = {
         "ibm": "records/test/ibm/*.tfrecord",
@@ -90,7 +90,7 @@ def main():
 
     model.train(
         dataset_patterns=train_path_patterns,
-        path="FLAGS.name",
+        path=FLAGS.path,
         test_datasets_pattern=test_path_patterns)
 
 if __name__ == "__main__":
