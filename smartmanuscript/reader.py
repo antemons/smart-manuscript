@@ -21,20 +21,31 @@
 """
 
 import tensorflow as tf
-from collections import namedtuple
-from tensorflow.python.ops.ctc_ops import ctc_beam_search_decoder
 import numpy as np
-import os.path
 
-from .encoder import Encoder
 from .stroke_features import strokes_to_features, InkPage
+from .model import Sequence
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
 
+from . import stroke_features
+NUM_FEATURES = stroke_features.InkFeatures.NUM_FEATURES
 
-Input = namedtuple('Input', ('sequence, length'))
+
+def get_dataset_from_features(generator, batch_size):
+    dataset = tf.data.Dataset.from_generator(
+        generator, output_types=tf.float32, output_shapes=[None, NUM_FEATURES])
+    dataset = dataset.map(
+        lambda features: (features, tf.shape(features)[0], ""))
+    dataset = dataset.padded_batch(
+        batch_size=batch_size,
+        padded_shapes=(tf.TensorShape([None, NUM_FEATURES]),
+                       tf.TensorShape([]),
+                       tf.TensorShape([])))
+    return dataset
+
 
 class Reader:
     """ read the handwriting with the help of a trained tensorflow graph
@@ -47,23 +58,46 @@ class Reader:
             path (str): path to directory with the tensorflow-graph and alphabet
             model (str): name of the model
         """
-        model_files = model_path
-        encoder_path = os.path.dirname(model_files)
-        self.encoder = Encoder.from_file(encoder_path)
+        self.graph = tf.get_default_graph()
+        saver = tf.train.import_meta_graph(model_path + ".meta")
+        self.inputs = Sequence(
+            values=self.graph.get_tensor_by_name("inputs/features:0"),
+            length= self.graph.get_tensor_by_name("inputs/length:0"))
+        self.labels = self.graph.get_tensor_by_name("output/labels:0")
+        self.probabilities = self.graph.get_tensor_by_name("output/probabilities:0")
+
         config = tf.ConfigProto(allow_soft_placement=True)
         self.session = tf.Session(config=config)
-        saver = tf.train.import_meta_graph(model_files + ".meta")
-        saver.restore(self.session, model_files)
-        graph = tf.get_default_graph()
-        self.input = Input(
-            sequence=graph.get_tensor_by_name("input_sequence:0"),
-            length= graph.get_tensor_by_name("input_seq_length:0"))
-        self.logits = graph.get_tensor_by_name("logits:0")
-        #self.output_states = tf.get_collection("output_states")[0]
+        saver.restore(self.session, model_path)
 
-    def recognize(
-            self, ink, debug_lstm=False, print_output=False,
-            num_proposals=1):
+    def recognize(self, inks):
+        """ generate the transcription suggenstions
+
+        Args:
+            ink (nested list of arrays[N,2]): the trajectories
+        """
+
+
+        def features():
+            return (strokes_to_features(ink.strokes) for ink in inks)
+        with self.graph.as_default():
+            dataset = get_dataset_from_features(features, batch_size=len(inks))
+            *inputs, _ = dataset.make_one_shot_iterator().get_next()
+        evaluated_inputs = self.session.run(inputs)
+        feed_dict = {self.inputs.values: evaluated_inputs[0],
+                     self.inputs.length: evaluated_inputs[1]}
+
+        labels, probabilities = self.session.run(
+            [self.labels, self.probabilities],
+            feed_dict=feed_dict)
+
+        normalized_probabilities = 100 * probabilities / np.sum(probabilities, axis=1)[:, None]
+        decoded_labels = [[proposal.decode() for proposal in example] for example in labels]
+
+        return [l for l in decoded_labels[0]], decoded_labels, normalized_probabilities
+
+
+    def recognize_line(self, ink):
         """ generate the transcription suggenstions
 
         Args:
@@ -71,48 +105,24 @@ class Reader:
         """
 
         features = strokes_to_features(ink)
-        feed_dict = {self.input.sequence: np.expand_dims(features, 0),
-                     self.input.length: np.array([len(features)])}
+        feed_dict = {self.inputs.values: np.expand_dims(features, 0),
+                     self.inputs.length: np.array([len(features)])}
 
-        beam_search = ctc_beam_search_decoder(
-            self.logits, self.input.length,
-            top_paths=num_proposals,
-            merge_repeated=False)
-        predictions, predictions_prob = self.session.run(
-            beam_search, feed_dict=feed_dict)
-        prediction = predictions[0].values
+        labels, probabilities = self.session.run(
+            [self.labels, self.probabilities],
+            feed_dict=feed_dict)
 
-        if print_output:
-            print(self.encoder.decode(prediction), "[",
-                  self.encoder.decode(predictions[1].values),
-                  "(%.2f) ," % (predictions_prob[0][1]/predictions_prob[0][0]),
-                  self.encoder.decode(predictions[2].values),
-                  "(%.2f) ," % (predictions_prob[0][2]/predictions_prob[0][0]),
-                  "]")
-
-        # if debug_lstm:
-        #     batch_of_features = [features[:i+1] for i in range(len(features))]
-        #     feed_dict = self.convert_to_tf(batch_of_features)
-        #     output_states = self.session.run(
-        #         [self.output_states], feed_dict=feed_dict)
-        #     lstm_c = [output_states[0][i][20] for i in range(len(features))]
-        #     InkFeatures(ink).plot(data=lstm_c)
-        return [self.encoder.decode(p.values) for p in predictions]
+        normalized_probabilities = 100 * probabilities / np.sum(probabilities, axis=1)
+        decoded_labels = [[proposal.decode() for proposal in example] for example in labels]
+        print(decoded_labels[0][0], f"({int(normalized_probabilities[0][0])}%)")
+        return decoded_labels[0][0], decoded_labels[0], normalized_probabilities[0]
 
     def recognize_page(
-            self, stroke_page, *args, **kwargs):
+            self, stroke_page):
         """ recognize a full page
         """
         ink_page = InkPage(stroke_page)
-        text = ""
-        print("Transcription:")
-        for i, ink_line in enumerate(ink_page.lines):
-            print(
-                "Read line: {:3} / {:3}".format(i + 1, len(ink_page.lines)),
-                 flush=True, end="\r")
-            line = self.recognize(ink_line.strokes, *args, **kwargs)[0]
-            print(" {:20}".format(""), end="\r")
-            print(line)
-            text += line + "\n"
-        print("")
-        return text
+        #lines, *_ = self.recognize(ink_page.lines)
+        lines = [self.recognize_line(ink_line.strokes)[0]
+                 for ink_line in ink_page.lines]
+        return "\n".join(lines)
