@@ -21,23 +21,43 @@
 """
 
 import numpy as np
+from functools import reduce
 import os.path
 import itertools
-import glob
 from collections import namedtuple
 import tensorflow as tf
 from tensorflow.python.platform.app import flags
-from tensorflow.python.training import coordinator
-from tensorflow.python.training import queue_runner
 from .utils import cached_property, colored_str_comparison
 from . import stroke_features
-NUM_FEATURES = stroke_features.InkFeatures.NUM_FEATURES
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
 
+NUM_FEATURES = stroke_features.InkFeatures.NUM_FEATURES
 Sequence = namedtuple('Sequence', ('values, length'))
+
+def parse_tfrecords(proto):
+    DEFAULT_ALPHABET = list("abcdefghijklmnopqrstuvwxyz"
+                            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                            "1234567890 ,.:;*+()/!?&-'\"$") #todo(dv): change records such that they include the string
+    character_lookup = tf.constant(DEFAULT_ALPHABET)
+
+    sequence_features={
+        'input': tf.FixedLenSequenceFeature([NUM_FEATURES], tf.float32)}
+    context_features={
+        'label': tf.VarLenFeature(tf.int64)}
+
+    context, sequence = tf.parse_single_sequence_example(
+        proto,
+        sequence_features=sequence_features,
+        context_features=context_features)
+
+    label = tf.reduce_join(tf.gather(character_lookup, context['label'].values))
+    inputs = sequence['input']
+
+    return inputs, label
+
 
 class InferenceModel:
     """ A recurrent neural network infers labels for a given sequence.
@@ -55,7 +75,7 @@ class InferenceModel:
         self.graph = tf.get_default_graph()
         with tf.variable_scope("inputs"):
             self.iterator = self._get_iterator()
-            tf.add_to_collection("iterator", self.iterator)
+            #tf.add_to_collection("iterator", self.iterator)
             features, features_length, self.targets = self.iterator.get_next()  # ToDo(dv): target is not input
             self.input = Sequence(
                 values=tf.identity(features, "features"),
@@ -124,7 +144,7 @@ class InferenceModel:
     @staticmethod
     def _forward_pass(inputs, lengths, lstm_sizes, num_classes, share_param_first_layer):
         with tf.variable_scope("forward_pass"):
-            lstm_layer_input = inputs
+            lstm_layer_input = tf.transpose(inputs, [1, 0, 2], name="inputs")
             for n_layer, num_hidden_neurons in enumerate(lstm_sizes):
                 # TODO(dv): add dropout?
                 lstm_cell_fw = tf.nn.rnn_cell.LSTMCell(
@@ -138,11 +158,12 @@ class InferenceModel:
                     lstm_cell_fw, lstm_cell_bw,
                     inputs=lstm_layer_input, dtype=tf.float32,
                     scope='BLSTM_' + str(n_layer + 1),
-                    sequence_length=lengths)
+                    sequence_length=lengths,
+                    time_major=True)
                 lstm_layer_output = tf.concat(outputs, 2)
                 lstm_layer_input = lstm_layer_output
             output_values = tf.layers.dense(lstm_layer_output, num_classes)
-            output_values = tf.transpose(output_values, [1, 0, 2], name="output")
+            #output_values = tf.transpose(output_values, [1, 0, 2], name="output")
             output_lengths = tf.identity(lengths, name="lengths")
         with tf.variable_scope("logits"):
             logit_values = tf.identity(output_values, name="values")
@@ -158,8 +179,6 @@ class InferenceModel:
         saver = tf.train.Saver(var_list)
         return saver
 
-
-
 class EvaluationModel(InferenceModel):
     TYPE_NAME = "evaluation"
     SUMMARY_SCALARS = ["loss", "error"]
@@ -174,7 +193,26 @@ class EvaluationModel(InferenceModel):
         self.error = self._get_error(self._most_likely_tokens, self.target_tokens)
         self.loss = self._get_loss(self.target_tokens, *self.logits)
 
-
+    def feed_iterator_from_records(self, patterns, batch_size, seed=None):
+        with self.graph.as_default():
+            datasets = [tf.data.Dataset.list_files(pattern)
+                        for pattern in patterns]
+            dataset = reduce(tf.data.Dataset.concatenate, datasets)
+            dataset = dataset.shuffle(10**5, seed)
+            dataset = dataset.interleave(
+                lambda filename: tf.data.TFRecordDataset(filename), cycle_length=5)
+            #dataset = dataset.flat_map(lambda filename: tf.data.TFRecordDataset(filename))
+            dataset = dataset.map(parse_tfrecords)
+            dataset = dataset.shuffle(1000, seed)
+            dataset = dataset.map(
+                lambda inputs, label: (inputs, tf.shape(inputs)[0], label))
+            dataset = dataset.padded_batch(
+                batch_size=batch_size,
+                padded_shapes=(tf.TensorShape([None, NUM_FEATURES]),
+                               tf.TensorShape([]),
+                               tf.TensorShape([])))
+            feed_iterator = self.iterator.make_initializer(dataset)
+        return feed_iterator
 
     def _get_summary_and_writer(self, log_path):
         with tf.name_scope('summaries'):
@@ -195,18 +233,19 @@ class EvaluationModel(InferenceModel):
             tokens = table.lookup(labels_splitted)
         return tokens
 
-    def get_evaluation(self, dataset, log_path=None):
+    def get_evaluation(self, dataset=None, feeder=None, log_path=None):
         with self.graph.as_default():
-            feed_iterator_from_dataset = self.iterator.make_initializer(dataset)
+            if feeder is None:
+                feeder = self.iterator.make_initializer(dataset)
             if log_path is not None:
                 summary, summary_writer = self._get_summary_and_writer(log_path)
             else:
                 summary, summary_writer = tf.no_op(), None
-            def evaluation(model_path, save_with_global_step=None):
+            def evaluation(model_path, save_with_global_step=None): #todo ugly
                 with tf.Session(graph=self.graph) as sess:
                     self._saver.restore(sess, model_path)
                     sess.run(tf.get_collection(tf.GraphKeys.TABLE_INITIALIZERS))
-                    sess.run(feed_iterator_from_dataset)
+                    sess.run(feeder)
                     tensors = self.error, self.labels, self.loss, summary
                     *evaled_tensors, evaled_summary = sess.run(tensors)
                     if save_with_global_step is not None:
@@ -284,7 +323,8 @@ class TrainingModel(EvaluationModel):
             keep_checkpoint_every_n_hours=0.5)
         return saver
 
-    def train(self, dataset, path, steps_per_checkpoint=10, epoch_num=1):
+    def train(self, dataset_patterns, path, test_datasets_pattern=None,
+              steps_per_checkpoint=20, epoch_num=1):
         with tf.Graph().as_default():
             model = InferenceModel(self._lstm_sizes,
                                    self._share_param_first_layer,
@@ -295,9 +335,23 @@ class TrainingModel(EvaluationModel):
                                     self._share_param_first_layer,
                                     self.DEFAULT_ALPHABET)
             model.save_meta(os.path.join(path, "evaluation.meta"))
-        feed_iterator_from_dataset = self.iterator.make_initializer(dataset)
+        feed_iterator_from_dataset = self.feed_iterator_from_records(
+            dataset_patterns, batch_size=32)
         summary, summary_writer = self._get_summary_and_writer(
-            os.path.join(path, "log"))
+            os.path.join(path, "log", "train"))
+
+        # if test_datasets_pattern is not None:
+        #     feed_iterator_from_datasets = {
+        #         name: model.feed_iterator_from_records([pattern], 100)
+        #         for name, pattern in test_datasets_pattern.items()}
+        #     evalation_functions = [
+        #         model.get_evaluation(
+        #             feeder=feeder,
+        #             log_path=os.path.join(path, "log", "test", name))
+        #         for name, feeder in feed_iterator_from_datasets.items()]
+        # else:
+            # evalation_functions = []
+
         with tf.Session(graph=self.graph) as sess:
             #self._saver.restore(sess, model_path)
             sess.run(tf.get_collection(tf.GraphKeys.TABLE_INITIALIZERS))
@@ -305,19 +359,18 @@ class TrainingModel(EvaluationModel):
             sess.run(feed_iterator_from_dataset)
             while sess.run(self.epoch) < epoch_num:
                 for step_in_epoch in itertools.count():
-                    if step_in_epoch % steps_per_checkpoint == 0:
-                        global_step = sess.run(self.global_step)
-                        checkpoints_path = self._saver.save(
-                            sess, os.path.join(path, "model"),
-                            global_step=global_step)
-                        #if eval_func is not None:
-                        #    eval_func(checkpoints_path, global_step)
-                        #    print(checkpoints_path, global_step)
+                    # if step_in_epoch % steps_per_checkpoint == 0:
+                    #     global_step = sess.run(self.global_step)
+                    #     checkpoints_path = self._saver.save(
+                    #         sess, os.path.join(path, "model"),
+                    #         global_step=global_step)
+                    #     for evalation_function in evalation_functions:
+                    #         evalation_function(checkpoints_path, 1)
                     try:
-                        #_, global_step, summary, loss =
                         print("asd")
-                        _, global_step, evaled_summary, loss = sess.run(
-                                [self.train_op, self.global_step, summary, self.loss])
+                        _, global_step, evaled_summary, loss, length = sess.run(
+                                [self.train_op, self.global_step, summary, self.loss, self.input.length])
+                        print("---", length)
                         summary_writer.add_summary(evaled_summary, global_step)
                         if step_in_epoch % steps_per_checkpoint == 0:
                             print(sess.run(self.epoch), step_in_epoch, loss)
@@ -326,174 +379,4 @@ class TrainingModel(EvaluationModel):
                         print("epoch completed")
                         break
 
-
-
 NeuralNetworks = TrainingModel
-#
-# class Training:
-#     Evaluation = namedtuple("Evaluation", ["batch", "writer"])
-#     EVALUATION_INTERVAL = 25
-#     SAVE_INTERVAL = 250
-#     EVALUATION_BATCH_SIZE = 300
-#     DEFAULT_BATCH_SIZE = 50
-#
-#     IBM_TEST_SET = ["GPIquery_01.tfrecords", "MVLquery_50.tfrecords"]
-#
-#     @property
-#     def IAM_TEST_SET(self):
-#         return [line.rstrip("\n").replace(".inkml" , "")
-#                         for line in open("data/IAMonDo-db-1.0/0.set", "r")]
-#
-#     def __init__(self, data_path="tmp"):
-#         self._data_path = data_path
-#
-#     def test_records(self):
-#
-#         result =  dict(
-#             daniel=glob.glob(self._data_path + "/my_test/*.tfrecords"),
-#             python_zen=glob.glob(self._data_path + "/zen_test/*.tfrecords"),
-#             iam_word=[filename
-#                 for filename in glob.glob(self._data_path + "/iam_word/*.tfrecords")
-#                 if any(k in filename for k in self.IAM_TEST_SET)],
-#             iam_line=[filename
-#                 for filename in glob.glob(self._data_path + "/iam_line/*.tfrecords")
-#                 if any(k in filename for k in self.IAM_TEST_SET)],
-#             ibm=[filename
-#                  for filename in glob.glob(self._data_path + "/ibm/*.tfrecords")
-#                  if any(k in filename for k in self.IBM_TEST_SET)])
-#         result = {k: v for k, v in result.items() if v}
-#         return result
-#
-#     @classmethod
-#     def train_records(cls, data_path):
-#
-#         result =  (10 * glob.glob(data_path + "/my_train/*.tfrecords") +
-#                 [filename
-#                  for filename in glob.glob(data_path + "/iam_word/*.tfrecords")
-#                  if not any(k in filename for k in cls.IAM_TEST_SET)] +
-#                 2 * [filename
-#                  for filename in glob.glob(data_path + "/iam_line/*.tfrecords")
-#                  if not any(k in filename for k in cls.IAM_TEST_SET)] +
-#                 [filename
-#                  for filename in glob.glob(data_path + "/ibm/*.tfrecords")
-#                  if not any(k in filename for k in cls.IBM_TEST_SET)])
-#         return result
-#
-#     @classmethod
-#     def train_batch(cls, data_path):
-#         return record_to_batch(
-#             filenames=cls.train_records(data_path),
-#             batch_size=cls.DEFAULT_BATCH_SIZE)
-#
-#     @cached_property
-#     def batch_size(self):
-#         return tf.placeholder_with_default(
-#             tf.constant(self.DEFAULT_BATCH_SIZE, tf.int32), [])
-#
-#     def evaluation(self, filenames, name, net, graph=None):
-#         writer = tf.summary.FileWriter(
-#             os.path.join(net.path, name), graph)
-#         with tf.Graph().as_default():
-#             batch = record_to_batch(filenames,
-#                                     batch_size=self.EVALUATION_BATCH_SIZE,
-#                                     allow_smaller_final_batch=True,
-#                                     shuffle=True, num_epochs=1)
-#             coord = coordinator.Coordinator()
-#             with tf.Session() as sess:
-#                 sess.run([tf.global_variables_initializer(),
-#                           tf.local_variables_initializer()])
-#                 # see: https://github.com/tensorflow/tensorflow/issues/1045
-#                 threads = queue_runner.start_queue_runners(sess, coord)
-#                 evaled_batch = sess.run(batch)
-#                 coord.request_stop()
-#                 coord.join(threads)
-#         print("loaded evaluation from {} with {} elements"\
-#             .format(filenames, evaled_batch.target.dense_shape[0]))
-#         return self.Evaluation(batch=evaled_batch, writer=writer)
-#
-#
-#     def evaluate(self, evaluation, sess, net, name, num_examples=1):
-#         feed_dict = {
-#             net.input: evaluation.batch.input,
-#             net.target: evaluation.batch.target}
-#
-#         summary, error, prediction, target, step = sess.run(
-#             [net.summary, net.error, net.prediction,
-#              net.target, net.global_step], feed_dict=feed_dict)
-#
-#         evaluation.writer.add_summary(summary, step)
-#         print("Evaluation ({}): {:2.0f}%".format(name, 100*error))
-#         for predicted_transcription, target_transcription \
-#             in zip(net.decode(prediction)[:num_examples], net.decode(target)):
-#             if len(predicted_transcription) > 1.5 * len(target_transcription):
-#                 predicted_transcription = "..."
-#             print(colored_str_comparison(target_transcription,
-#                                          predicted_transcription))
-#         return error
-#
-#     @staticmethod
-#     def create_learning_profile(
-#         learning_rate_default, total_num_steps,
-#         final_learning_rate, num_final_steps):
-#
-#         def learning_rate(step):
-#             if step < total_num_steps - num_final_steps:
-#                 return learning_rate_default
-#             else:
-#                 return final_learning_rate
-#         return learning_rate
-#
-#
-#     def train(self, net, num_steps, learning_rate_default, final_learning_rate = None,
-#               num_final_steps=0, restore_from=None):
-#         """ train the network
-#
-#         Args:
-#             batch_test (dict of list of tuples (features, labels)):
-#                 on each item a test of the accuracy is performed
-#         """
-#         print("train network", flush=True)
-#
-#         evaluations = {
-#             name: self.evaluation(filename, name, net, tf.get_default_graph())
-#             for name, filename in self.test_records().items()}
-#
-#         writer_train = tf.summary.FileWriter(
-#             os.path.join(net.path, "train"), tf.get_default_graph())
-#
-#         config = tf.ConfigProto(allow_soft_placement=True,
-#                                 log_device_placement=False)
-#
-#         learning_rate = self.create_learning_profile(
-#             learning_rate_default, num_steps, final_learning_rate, num_final_steps)
-#         with tf.Session(config=config) as sess:
-#             sess.run(net.initializer)
-#             tf.train.start_queue_runners(sess=sess)
-#             if restore_from is not None and restore_from != "":
-#                 print ("restore model from: {}".format(restore_from))
-#                 net._saver.restore(sess, restore_from)
-#
-#             while True:
-#                 step = sess.run(net.global_step)
-#                 if step % 10 == 0:
-#                     print("step: {:6}".format(step), flush=True)
-#
-#
-#                 if step % self.EVALUATION_INTERVAL == 0:
-#                     for key, evaluation in evaluations.items():
-#                         self.evaluate(evaluation, sess, net, key)
-#
-#                 if (step % self.SAVE_INTERVAL == 0 or step == num_steps):
-#                     net.save_checkpoint(sess, step)
-#
-#
-#                 _, target, summary = sess.run(
-#                     [net.train_step, net.target, net.summary],
-#                     feed_dict={net.learning_rate: learning_rate(step)})
-#                 writer_train.add_summary(summary, step)
-#                 #decoded_target = net.decode(target)
-#                 #print(decoded_target)
-#
-#                 if step == num_steps:
-#                     print("training has been finished")
-#                     break

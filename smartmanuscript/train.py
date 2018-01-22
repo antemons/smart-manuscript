@@ -22,9 +22,12 @@
 
 from tensorflow.python.platform.app import flags
 import json
+import glob
+import os
+import tensorflow as tf
 
-from .net import Training, NeuralNetworks
-from .encoder import encoder
+from .model import TrainingModel
+#from .encoder import encoder
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
@@ -64,28 +67,65 @@ def read_flags():
 
     return flags.FLAGS
 
+
+
+
+# def _dataset_from_tfrecords(filenames):
+#
+# #      Dataset.list_files(...).shuffle(num_shards).
+# # Use dataset.interleave(lambda filename: tf.data.TextLineDataset(filename), cycle_length=N) to mix together records from N different shards.
+# # Use dataset.shuffle(B) to shuffle the resulting dataset. Setting B might require some experimentation, but you will p
+#
+#
+#     if all(isinstance(s, str) for s in filenames):
+#         filenames = tf.constant(filenames)
+#     dataset = tf.data.TFRecordDataset(filenames)
+#     dataset = dataset.map(_parse_function)
+#     dataset = dataset.map(
+#         lambda inputs, label: (inputs, tf.shape(inputs)[0], label))
+#     dataset = dataset.padded_batch(
+#         batch_size=10,
+#         padded_shapes=(tf.TensorShape([None, 15]),
+#                        tf.TensorShape([]),
+#                        tf.TensorShape([])))
+#     return dataset
+
+
+
+
+# def get_all_datasets(path):
+#     filenames = {}
+#     for subfolders in glob.glob(os.path.join(path, "*")):
+#         filenames[os.path.basename(subfolders)] = glob.glob(
+#             os.path.join(subfolders, "*.tfrecords"))
+#     return filenames
+
+
 def main():
     """ Train the network
     """
     FLAGS = read_flags()
 
-    train_batch = Training.train_batch(
-        FLAGS.data_path)
-
-    net = NeuralNetworks(
-        encoder=encoder,
-        name=FLAGS.name,
-        input_=train_batch.input,
-        target=train_batch.target,
+    model = TrainingModel(
         lstm_sizes=json.loads(FLAGS.lstm_sizes),
         share_param_first_layer=FLAGS.share_param_first_layer)
 
-    training = Training(FLAGS.data_path)
+    train_path_patterns = [
+        #"records/train/ibm/*.tfrecords",
+        "records/train/iam_line/*.tfrecords",
+        "records/train/iam_word/*.tfrecords"]
+        #"records/train/my_train/*.tfrecords"]
 
-    training.train(
-        net=net,
-        num_steps=FLAGS.num_steps,
-        learning_rate_default=FLAGS.learning_rate,
-        final_learning_rate = FLAGS.learning_rate_fine,
-        num_final_steps=FLAGS.num_final_steps,
-        restore_from=FLAGS.restore_from)
+    test_path_patterns = {
+        "ibm": "records/test/ibm/*.tfrecords",
+        "iam_line": "records/test/iam_line/*.tfrecords",
+        "ia_word": "records/test/iam_word/*.tfrecords",
+        "zen_test": "records/test/zen_test/*.tfrecords"}
+
+    model.train(
+        dataset_patterns=train_path_patterns,
+        path="FLAGS.name",
+        test_datasets_pattern=test_path_patterns)
+
+if __name__ == "__main__":
+    main()
