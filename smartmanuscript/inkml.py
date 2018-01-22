@@ -152,6 +152,7 @@ class InkML:
         with open(filename) as file_:
             xmlstring = file_.read()
         xmlstring = re.sub(' xmlns="[^"]+"', '', xmlstring, count=1)
+        self.filename = filename
         self.xml_root = ET.fromstring(xmlstring)
         self._root = Element.from_xml_node(self.xml_root)
 
