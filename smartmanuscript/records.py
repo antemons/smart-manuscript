@@ -112,7 +112,7 @@ def sequenced_example(labels, inputs):
     #                "label": tf.train.FeatureList(feature=feature_label)}
     feature_lists = tf.train.FeatureLists(feature_list=feature_list)
     features = {"feature":
-        {"label": tf.train.Feature(int64_list=tf.train.Int64List(value=labels))}}
+        {"label": tf.train.Feature(bytes_list=tf.train.BytesList(value=[labels.encode()]))}}
     return tf.train.SequenceExample(feature_lists=feature_lists,
                                     context=features)
 
@@ -182,7 +182,7 @@ def create_records(
             except FileExistsError:
                 pass
             record_filename = os.path.join(
-                directory, "{}.tfrecords".format(corpus_name))
+                directory, "{}.tfrecord".format(corpus_name))
             if os.path.isfile(record_filename):
                 print("continue")
                 continue
@@ -198,8 +198,7 @@ def print_record(filename, decode):
         example = tf.train.SequenceExample()
         example.ParseFromString(serialized_example)
         #label = [i.int64_list.value[0] for i in example.feature_lists.feature_list['label'].feature]
-        label = example.context.feature["label"].int64_list.value
-        transcription = decode(label)
+        transcription = example.context.feature['label'].bytes_list.value[0].decode()
         if True:  #"M" in transcription:
             features = np.array([i.float_list.value for i in example.feature_lists.feature_list['input'].feature])
             plot_features(features, transcription)

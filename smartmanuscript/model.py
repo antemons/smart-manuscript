@@ -38,24 +38,15 @@ NUM_FEATURES = stroke_features.InkFeatures.NUM_FEATURES
 Sequence = namedtuple('Sequence', ('values, length'))
 
 def parse_tfrecords(proto):
-    DEFAULT_ALPHABET = list("abcdefghijklmnopqrstuvwxyz"
-                            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                            "1234567890 ,.:;*+()/!?&-'\"$") #todo(dv): change records such that they include the string
-    character_lookup = tf.constant(DEFAULT_ALPHABET)
-
-    sequence_features={
+    sequence_features = {
         'input': tf.FixedLenSequenceFeature([NUM_FEATURES], tf.float32)}
-    context_features={
-        'label': tf.VarLenFeature(tf.int64)}
-
+    context_features = {'label': tf.FixedLenFeature([], tf.string)}
     context, sequence = tf.parse_single_sequence_example(
         proto,
         sequence_features=sequence_features,
         context_features=context_features)
-
-    label = tf.reduce_join(tf.gather(character_lookup, context['label'].values))
+    label = context['label']
     inputs = sequence['input']
-
     return inputs, label
 
 
@@ -81,7 +72,9 @@ class InferenceModel:
                 values=tf.identity(features, "features"),
                 length=tf.identity(features_length, "length"))
         self.alphabet =  tf.constant(list(alphabet))
-        self.logits = self._forward_pass(*self.input, lstm_sizes, self.NUM_CLASSES, share_param_first_layer)
+        self.logits = self._forward_pass(
+            *self.input, lstm_sizes,
+            self.NUM_CLASSES, share_param_first_layer)
         self.tokens, self.log_prob = self._get_labels(*self.logits, self.NUM_OF_PROPOSALS)
         labels = self._decode(self.tokens, self.alphabet)
         with tf.variable_scope("output"):
