@@ -28,4 +28,3 @@ __license__ = "GPL"
 from .transcribe import main
 
 main()
-
