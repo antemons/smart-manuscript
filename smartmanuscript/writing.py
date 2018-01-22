@@ -301,7 +301,8 @@ class InkNormalization:
         final_ink, final_transformation, steps = self._apply_normalizations(
             ink, self._normaliztion_steps(skew_is_horizontal), ret_steps=True)
         if axes is None:
-            _, axes = plt.subplots(5)
+            _, axes = plt.subplots(3, 2)
+            axes = np.concatenate(list(axes))
         for axis, (name, (ink, transformation)) in zip(axes, steps.items()):
             ink.plot_pylab(
                 axis, name,
@@ -350,7 +351,7 @@ class InkNormalization:
 
         angle = np.arctan2(*a[::-1])
 
-        if np.linalg.norm(a) < 0.3:
+        if np.linalg.norm(a) < 0.23:
             angle = round(angle/(np.pi/2))*np.pi/2
             transformation_skew = Transformation.rotation(-angle)
             _, transformation_mean = cls.normalized_mean(ink)
@@ -479,12 +480,6 @@ class InkNormalization:
 
 normalized = InkNormalization()
 
-
-
-
-
-
-
 class InkFeatures:
     """ Generates features characterizing the ink
     """
@@ -503,6 +498,19 @@ class InkFeatures:
         if not ink.is_uncorrupted:
             raise ValueError("ink must be uncorrupted")
         self._ink = ink
+
+    @classmethod
+    def plot(cls, features):
+        _, axes = plt.subplots(5, 3, sharex=True)
+        axes = np.concatenate(list(axes))
+        for feature, name, axis in zip(features.transpose(),
+                                       cls.FEATURES_NAMES, axes):
+            axis.set_aspect('equal')
+            axis.set_title(name)
+            axis.scatter(
+                features[:, 0], features[:, 1],
+                c=feature, cmap=plt.cm.get_cmap('bwr'), edgecolors='face')
+        plt.show()
 
     @classmethod
     def from_features(cls, features):
@@ -951,6 +959,14 @@ class InkFeatures:
                 idx += 1
         return encased_from_below, encased_from_top
 
+    def __len__(self):
+        return self.NUM_FEATURES
+
+    def __getitem__(self, key):
+        if type(key) is not int:
+            raise TypeError("key must be int")
+        return self.features[:, key]
+
     @cached_property
     def features(self):
         """ provide a collection of features
@@ -991,7 +1007,8 @@ class InkFeatures:
                       "encased_from_top",
                       "encased_from_below",
                       "delta_x_extended",
-                      "delta_y_extended"]
+                      "delta_y_extended",
+                      "intersections"]
 
 def strokes_to_features(
         strokes,

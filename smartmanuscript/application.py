@@ -31,7 +31,7 @@ import os
 import sys
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import gi
-gi.require_version('Gtk', '3.0')
+#gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk
 try:
     from xinput import operate_xinput_device, MODE_ENABLE, MODE_DISABLE
@@ -46,7 +46,7 @@ def read_flags():
     flags.DEFINE_integer(
         "num_proposals", 3, "How many recognation proposals are shown")
     flags.DEFINE_string(
-        "deactivate_touchscreen", "", #e.g. maXTouch Digitizer
+        "deactivate_touchscreen", "",  # e.g. maXTouch Digitizer
         "When given this touchscreen is deactivated (for name see xinput)")
     dafault_model_path = os.path.join(
         os.path.dirname(__file__), 'data', 'model', 'model.ckpt')
