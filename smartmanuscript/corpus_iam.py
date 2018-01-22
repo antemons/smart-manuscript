@@ -81,7 +81,7 @@ class IAMonDo(InkML):
             try:
                 transcription = textline.annotation[self.TRANSCRIPTION]
             except KeyError:
-                print("Warning: transcription not found, skipping")
+                print(f'Warning: transcription for file {self.filename} not found, skipping')
                 continue
             yield TranscriptedStrokes(
                 transcription=transcription,
