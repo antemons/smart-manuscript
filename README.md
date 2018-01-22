@@ -1,6 +1,6 @@
 # SMART MANUSCRIPT
 
-This software transcribes (digitizes) handwritten manuscripts and digitizer-pen input.
+This software recognizes (digitizes) handwritten manuscripts and digitizer-pen input.
 
 Note, it can only transcribe online handwriting (generated e.g. by smart pens) but no scanned pages.
 
@@ -8,26 +8,26 @@ Note, it can only transcribe online handwriting (generated e.g. by smart pens) b
 
 ### Setup
 
- 0. (Create Virtual Environment)
+ 1. (Create Virtual Environment)
 
         virtualenv env -p /usr/bin/python3
-	source env/bin/activate
+        source env/bin/activate
 
- 1. Install requirements: 
-    
+ 2. Install requirements:
+
         pip install -r requirements.txt
 
- 2. Install this software
-        
+ 3. Install this software
+
         python setup.py install
 
- 3. Optional: train a new model (or use the default one)
+ 4. Optional: train a new model (or use the default one)
 
 ### Usage
 
-#### Transcribe handwritten notes
+#### Recognize handwritten notes
 
-Transcribe the handwritten file (PDF or a SVG, generated e.g. by smart pens) and 
+Recognize a handwritten file (of type either PDF or SVG, generated e.g. by a smart pen) and
 generate a PDF which is searchable and where text can be copied from.
 
     transcribe data/sample_text/The_Zen_of_Python.pdf output.pdf
@@ -42,17 +42,24 @@ The input will be copied into the clipboard.
 
 #### Train new model
 
- 1. Download and extract training and test data:
-    
-    a. You can use the [IAMonDo-db-1.0](http://www.iapr-tc11.org/dataset/IAMonDo/IAMonDo-db-1.0.tar.gz) database to train and validate the model. Place the unzipped folder IAMonDo-db-1.0 in the folder data. 
-    
-    b.  You can use the [IBM_UB_1](https://cubs.buffalo.edu/research/50:hwdata) database to train and validate the model. Place the folder IBM_UB_1 in the folder data. 
+ 1. Download and extract data:
 
-    c. You may use also your personal handwritten notes, analogously to the one in the directory smart_manuscript/data/sample_text. Place the files in the folder data/my_handwriting.
+    a. You can use the [IAMonDo-db-1.0](http://www.iapr-tc11.org/dataset/IAMonDo/IAMonDo-db-1.0.tar.gz) database to train and validate the model. Place the unzipped folder "IAMonDo-db-1.0" in the folder data.
+
+    b.  You can use the [IBM_UB_1](https://cubs.buffalo.edu/research/50:hwdata) database to train and validate the model. Place the folder "IBM_UB_1" in the folder data.
+
+    c. You may use also your personal handwritten notes, analogously to the one in the directory smart_manuscript/data/sample_text. Place the files in the folder "data/my_handwriting".
 
  2. Create the preprocessed records:
 
-        python train_model.py records
+        python -m smartmanuscript.records \
+           --path="records" \
+           --iam_on_do_path="./data/IAMonDo-db-1.0/" \
+           --ibm_ub_path="./data/IBM_UB_1/query" \
+           --my_handwriting_train_path="./data/my_handwriting/train/" \
+           --my_handwriting_test_path="./data/my_handwriting/test/"
+
+    The new folder "records" should contain a "test" and a "train" folder
 
  3. Train new model:
 
