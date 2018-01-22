@@ -20,7 +20,6 @@
     along with Smart Manuscript.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from xml.dom import minidom
 import pylab as plt
 import numpy as np
 from svgpathtools import svg2paths
