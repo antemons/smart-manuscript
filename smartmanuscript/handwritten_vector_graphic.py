@@ -24,7 +24,7 @@ from xml.dom import minidom
 import pylab as plt
 import numpy as np
 from svgpathtools import svg2paths
-from os.path import basename
+import os
 import subprocess
 import re
 from .stroke_features import InkPage
@@ -73,25 +73,26 @@ def _read_svg(filename, is_handwritten=None):
         strokes
     """
 
+    # ToDo(dv): implement that also global transformation are condisdered
+    #           It seems that these transformation are used by InkScape but
+    #           not by pdf2cairo (which is here used to convert PDF->SVG)
+
     def is_black(path):
         return any("style" in path and color in path["style"]
                    for color in [r"rgb(0%,0%,0%)", r"#000000"])
 
-    if is_handwritten is None:
-        is_handwritten = is_black
+    is_handwritten = is_handwritten or is_black
 
     def remove_unit(string):
         unit = re.findall("[a-z]+", string)[-1]
         return string.replace(unit, "")
 
-    svg_dom = minidom.parse(filename)
-    element = svg_dom.getElementsByTagName('svg')[0]
-    WIDTH = float(remove_unit(element.getAttribute("width")))
-    HEIGHT = float(remove_unit(element.getAttribute("height")))
-    svg_dom.unlink()
-
     strokes = []
-    paths, properties = svg2paths(filename)
+    paths, properties, svg_attributes = svg2paths(
+        filename,
+        return_svg_attributes=True)
+    width = float(remove_unit(svg_attributes["width"]))
+    height = float(remove_unit(svg_attributes["height"]))
     for path, property_ in zip(paths, properties):
         if not is_handwritten(property_):
             continue
@@ -106,16 +107,16 @@ def _read_svg(filename, is_handwritten=None):
                 parameters = np.array(
                     [float(p) for p in parameters_str.split(",")])
                 stroke = Transformation(parameters[[0, 1, 4, 2, 3, 5]]) @ stroke
-        # stroke = Transformation([1, 0, 0, 0, -1, HEIGHT]) @ stroke
+        stroke = Transformation([1, 0, 0, 0, -1, height]) @ stroke
         strokes.append(stroke)
-    return strokes, (WIDTH, HEIGHT)
+    return strokes, (width, height)
 
 
 def _pdf_to_svg_tmp(pdf_path):
-    pdf_basename = basename(pdf_path)
+    pdf_basename = os.path.basename(pdf_path)
     svg_basename = pdf_basename.replace(".pdf", ".svg")
     svg_path = "/tmp/" + svg_basename
-    # subprocess.call(["inkscape", "-l", svg_path, pdf_path])
+    # subprocess.call(["inkscape", "-l", svg_path, pdf_path])  (see TODO above)
     subprocess.call(["/usr/bin/pdftocairo", "-svg", pdf_path, svg_path])
     return svg_path
 
@@ -142,6 +143,8 @@ if __name__ == "__main__":
     from tensorflow.python.platform.app import flags
     FLAGS = flags.FLAGS
     flags.DEFINE_string(
-        "file", "sample_text/The_Zen_of_Python.pdf",
+        "file",  os.path.join(os.path.dirname(__file__),
+                              "data", "sample_text",
+                              "The_Zen_of_Python.pdf"),
         "file to show features (either PDF or SVG)")
     main(FLAGS.file)
