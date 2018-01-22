@@ -53,6 +53,10 @@ def read_flags():
     flags.DEFINE_integer(
         "max_files", 10**10,
         "the max number of files to read")
+    flags.DEFINE_string("my_handwriting_train_path", "data/my_handwriting/train/",
+                        "path folder with own examples")
+    flags.DEFINE_string("my_handwriting_test_path", "data/my_handwriting/test/",
+                        "path folder with own examples")
     return flags.FLAGS
 
 
@@ -123,6 +127,8 @@ def create_records(
     output_path,
     ibm_ub_path,
     iam_on_do_path,
+    my_handwriting_train_path,
+    my_handwriting_test_path,
     load_corpora_from_pickle=False,
     max_files=None):
 
@@ -130,43 +136,56 @@ def create_records(
     if not load_corpora_from_pickle:
 
         corpora_dict = {}
-
         corpora_dict["ibm"] = corpus_ibm.load(ibm_ub_path,
                                               max_files=max_files)
-
         corpora_dict["iam_word"], corpora_dict["iam_line"] = \
             corpus_iam.load(iam_on_do_path, max_files=max_files)
 
-        folder = "data/my_handwriting/"
-        corpora_dict["my_train"] = read_pdf_folder(folder + "train/",
+        corpora_dict["my_train"] = read_pdf_folder(my_handwriting_train_path,
                                                    max_files=max_files)
-        corpora_dict["my_test"] = read_pdf_folder(folder + "test/",
+        corpora_dict["my_test"] = read_pdf_folder(my_handwriting_test_path,
                                                   max_files=max_files)
 
+        modul_dir, _ = os.path.split(__file__)
+        sample_text_path = os.path.join(modul_dir, "data", "sample_text", "The_Zen_of_Python.pdf")
         corpora_dict["zen_test"] = Corpora(
-            zen_test=from_pdf("smartmanuscript/data/sample_text/The_Zen_of_Python.svg"))
+            zen_test=from_pdf(sample_text_path))
 
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
         pickle.dump(corpora_dict, open(pickle_filepath, "wb"), -1)
     else:
         corpora_dict = pickle.load(open(pickle_filepath, "rb"))
 
-    for corpora_name, corpora in corpora_dict.items():
-        print("preprocess corpus: {}".format(corpora_name))
-        directory = os.path.join(output_path, corpora_name)
+    iam_test_set = [line.rstrip("\n").replace(".inkml" , "")
+                    for line in open(os.path.join(iam_on_do_path, "0.set"), "r")]
+
+    for purpose in ["train", "test"]:
         try:
-            os.mkdir(directory)
+            os.mkdir(os.path.join(output_path, purpose))
         except FileExistsError:
             pass
+    for corpora_name, corpora in corpora_dict.items():
+        print("preprocess corpus: {}".format(corpora_name))
         min_words = 2 if ("my" in corpora_name) or ("line" in corpora_name) else 0
         skew_is_horizontal = True if "ibm" in corpora_name else False
         for corpus_name, corpus in corpora.items():
-            print(corpus_name)
+            if corpora_name == "ibm":
+                purpose = "test" if corpus_name in ["AARquery_13", "ALSquery_37", "ALSquery_91", "AMCquery_51"] else "train"
+            elif corpora_name in ["iam_word", "iam_line"]:
+                purpose = "test" if corpus_name in iam_test_set else "train"
+            else:
+                purpose = "test" if ("test" in corpus_name) else "train"
+            directory = os.path.join(output_path, purpose, corpora_name)
+            try:
+                os.mkdir(directory)
+            except FileExistsError:
+                pass
             record_filename = os.path.join(
                 directory, "{}.tfrecords".format(corpus_name))
             if os.path.isfile(record_filename):
                 print("continue")
                 continue
-
 
             labeled_features = preprocessed_corpus(
                 corpus, encoder.encode, min_words=min_words,
@@ -197,5 +216,10 @@ def main():
             FLAGS.path,
             iam_on_do_path=FLAGS.iam_on_do_path,
             ibm_ub_path=FLAGS.ibm_ub_path,
+            my_handwriting_train_path=FLAGS.my_handwriting_train_path,
+            my_handwriting_test_path=FLAGS.my_handwriting_test_path,
             load_corpora_from_pickle=FLAGS.load_cache,
             max_files=FLAGS.max_files)
+
+if __name__ == "__main__":
+    main()
