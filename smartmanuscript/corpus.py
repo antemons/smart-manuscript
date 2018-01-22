@@ -32,7 +32,6 @@ __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
 
-
 TranscriptedStrokes = namedtuple('TranscriptedStrokes',
                                  ['transcription', 'strokes'])
 
