@@ -19,7 +19,7 @@ Note, it can only transcribe online handwriting (generated e.g. by smart pens) b
 
  3. Install this software
 
-        python setup.py install
+        pip install .
 
  4. Optional: train a new model (or use the default one)
 
@@ -30,13 +30,15 @@ Note, it can only transcribe online handwriting (generated e.g. by smart pens) b
 Recognize a handwritten file (of type either PDF or SVG, generated e.g. by a smart pen) and
 generate a PDF which is searchable and where text can be copied from.
 
-    transcribe data/sample_text/The_Zen_of_Python.pdf output.pdf
+    python -m smartmanuscript input.pdf output.pdf
+
+Test, e.g., as input "smart-manuscript/smartmanuscript/data/sample_text/The_Zen_of_Python.pdf"
 
 #### Handwritten input
 
 A simple application that transcribes handwritten input (e.g. from a digitizer pen):
 
-    manuscript-writer
+    python -m smartmanuscript.application
 
 The input will be copied into the clipboard.
 
@@ -63,7 +65,7 @@ The input will be copied into the clipboard.
 
  3. Train new model:
 
-        python train_model.py train --name=my_model
+        python -m smartmanuscript.train --path=graph
 
 ## Example
 
