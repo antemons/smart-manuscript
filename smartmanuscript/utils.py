@@ -28,12 +28,6 @@ __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
 
 
-class Bunch:
-    """ collecting named items """
-    def __init__(self, **kwargs):
-        self.__dict__ = kwargs
-
-
 class Transformation:
 
     def __init__(self, param):
@@ -52,7 +46,7 @@ class Transformation:
     @classmethod
     def rotation(cls, angle):
         return cls([np.cos(angle), - np.sin(angle), 0,
-                               np.sin(angle),   np.cos(angle), 0])
+                    np.sin(angle),   np.cos(angle), 0])
 
     @classmethod
     def scale(cls, factor):
@@ -125,13 +119,3 @@ def cached_property(function):
             setattr(self, attr_name, function(self))
         return getattr(self, attr_name)
     return _chached_property
-
-
-# class cached_property:
-#     def __init__(self, function):
-#         self.function = function
-#
-#     def __get__(self, obj, cls):
-#         value = self.function(obj)
-#         setattr(obj, self.function.__name__, value)
-#         return value
