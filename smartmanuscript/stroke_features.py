@@ -908,7 +908,7 @@ class InkFeatures:
         tmp = ((x[:, np.newaxis] - x[np.newaxis, :-1]) *
                (x[:, np.newaxis] - x[np.newaxis, 1:])) < 0
         encased_from_below = 1*np.any(point_is_above*tmp*conditions, axis=1)
-        encased_from_top = 1*np.any((- point_is_above)*tmp*conditions, axis=1)
+        encased_from_top = 1*np.any((~ point_is_above)*tmp*conditions, axis=1)
         encased = np.column_stack([encased_from_below, encased_from_top])
         return encased
 
@@ -975,6 +975,21 @@ class InkFeatures:
             self.intersection])
         assert self.NUM_FEATURES == features.shape[1]
         return features
+
+    FEATURES_NAMES = ["x_position",
+                      "y_position",
+                      "x_low_pass_filtered",
+                      "pressure_start",
+                      "pressure_stop",
+                      "radius_normalized",
+                      "writing_direction_x",
+                      "writing_direction_y",
+                      "rough_tangent_x",
+                      "rough_tangent_y",
+                      "encased_from_top",
+                      "encased_from_below",
+                      "delta_x_extended",
+                      "delta_y_extended"]
 
 def strokes_to_features(
         strokes,
