@@ -28,7 +28,7 @@ import tempfile
 
 from .handwritten_vector_graphic import load as ink_from_file
 from . import writing
-from utils import Transformation
+from .utils import Transformation
 from .reader import Reader
 
 __author__ = "Daniel Vorberg"
