@@ -268,7 +268,7 @@ class EvaluationModel(InferenceModel):
 class TrainingModel(EvaluationModel):
     TYPE_NAME = "training"
     SUMMARY_SCALARS = (EvaluationModel.SUMMARY_SCALARS +
-                       ["global_step", "global_step", "epoch"])
+                       ["global_step", "learning_rate", "epoch"])
     DEFAULT_ALPHABET = list("abcdefghijklmnopqrstuvwxyz"
                             "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                             "1234567890 ,.:;*+()/!?&-'\"$")
@@ -321,8 +321,14 @@ class TrainingModel(EvaluationModel):
             keep_checkpoint_every_n_hours=0.5)
         return saver
 
-    def train(self, dataset_patterns, path, test_datasets_pattern=None,
-              steps_per_checkpoint=20, epoch_num=1):
+    def train(self,
+              dataset_patterns,
+              path,
+              test_datasets_pattern=None,
+              steps_per_checkpoint=20,
+              epoch_num=1,
+              batch_size=32,
+              learning_rate=None):
         with tf.Graph().as_default():
             model = InferenceModel(self._lstm_sizes,
                                    self._share_param_first_layer,
@@ -334,7 +340,7 @@ class TrainingModel(EvaluationModel):
                                     self.DEFAULT_ALPHABET)
             model.save_meta(os.path.join(path, "evaluation.meta"))
         feed_iterator_from_dataset = self.feed_iterator_from_records(
-            dataset_patterns, batch_size=32)
+            dataset_patterns, batch_size=batch_size)
         summary_writer = self._get_summary_and_writer(
             os.path.join(path, "log", "train"))
 
@@ -354,6 +360,8 @@ class TrainingModel(EvaluationModel):
             #self._saver.restore(sess, model_path)
             sess.run(tf.get_collection(tf.GraphKeys.TABLE_INITIALIZERS))
             sess.run(self.initializer)
+            if learning_rate is not None:
+                sess.run(tf.assign(self.learning_rate, learning_rate))
             sess.run(feed_iterator_from_dataset)
             while sess.run(self.epoch) < epoch_num:
                 for step_in_epoch in itertools.count():

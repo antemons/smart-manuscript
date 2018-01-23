@@ -47,22 +47,23 @@ def read_flags():
         "Whether the first LSTM-layer shares parameters"
         "in forward and backward layer")
     flags.DEFINE_integer(
-        'num_steps', 10000, "Number of batches to run")
+        'epoch_num', 1, "Number of epochs to train")
+    flags.DEFINE_integer(
+        'steps_per_checkpoint', 20, "")
+    #flags.DEFINE_integer(
+    #    'num_steps', 10000, "Number of batches to run")
     flags.DEFINE_float(
        'learning_rate', 0.003, "Learning rate for Optimizer")
-    flags.DEFINE_float(
-       'learning_rate_fine', 0.0006, "Learning rate for fine-tuning")
-    flags.DEFINE_integer(
-       'num_final_steps', 1000,
-       "Number of batches to run before learning_rate_fine is used")
+    #flags.DEFINE_float(
+    #   'learning_rate_fine', 0.0006, "Learning rate for fine-tuning")
+    #flags.DEFINE_integer(
+    #   'num_final_steps', 1000,
+    #   "Number of batches to run before learning_rate_fine is used")
     flags.DEFINE_string(
-       'data_path', "tmp",
+       'data_path', "./records",
        "filepath to the tfrecords")
-    #flags.DEFINE_boolean(
-    #    'batch_size', 50, "Size of the training batch")
-    # flags.DEFINE_integer(
-    #     'test_batch_size_lines', 10,
-    #     "Batch size of the test batch(es)")
+    flags.DEFINE_boolean(
+        'batch_size', 32, "Size of the training batch")
 
     return flags.FLAGS
 
@@ -77,21 +78,24 @@ def main():
         share_param_first_layer=FLAGS.share_param_first_layer)
 
     train_path_patterns = [
-        "records/train/ibm/*.tfrecord",
-        "records/train/iam_line/*.tfrecord",
-        "records/train/iam_word/*.tfrecord",
-        "records/train/my_train/*.tfrecord"]
+        os.path.join(FLAGS.data_path, "train/ibm/*.tfrecord"),
+        os.path.join(FLAGS.data_path,"train/iam_line/*.tfrecord"),
+        os.path.join(FLAGS.data_path,"train/iam_word/*.tfrecord"),
+        os.path.join(FLAGS.data_path,"train/my_train/*.tfrecord")]
 
     test_path_patterns = {
-        "ibm": "records/test/ibm/*.tfrecord",
-        "iam_line": "records/test/iam_line/*.tfrecord",
-        "ia_word": "records/test/iam_word/*.tfrecord",
-        "zen_test": "records/test/zen_test/*.tfrecord"}
+        "ibm": os.path.join(FLAGS.data_path,"test/ibm/*.tfrecord"),
+        "iam_line": os.path.join(FLAGS.data_path,"test/iam_line/*.tfrecord"),
+        "ia_word": os.path.join(FLAGS.data_path,"test/iam_word/*.tfrecord"),
+        "zen_test": os.path.join(FLAGS.data_path,"test/zen_test/*.tfrecord")}
 
     model.train(
         dataset_patterns=train_path_patterns,
         path=FLAGS.path,
-        test_datasets_pattern=test_path_patterns)
+        batch_size=FLAGS.batch_size,
+        test_datasets_pattern=test_path_patterns,
+        epoch_num=FLAGS.epoch_num,
+        steps_per_checkpoint=FLAGS.steps_per_checkpoint)
 
 if __name__ == "__main__":
     main()
