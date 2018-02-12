@@ -329,10 +329,11 @@ class TrainingModel(EvaluationModel):
               dataset_patterns,
               path,
               test_datasets_pattern=None,
-              steps_per_checkpoint=20,
+              steps_per_checkpoint=100,
               epoch_num=1,
               batch_size=32,
-              learning_rate=None):
+              learning_rate=None,
+              fine_tuning=True):
         with tf.Graph().as_default():
             model = InferenceModel(self._lstm_sizes,
                                    self._share_param_first_layer,
@@ -350,7 +351,7 @@ class TrainingModel(EvaluationModel):
 
         if test_datasets_pattern is not None:
             feed_iterator_from_datasets = {
-                name: model.feed_iterator_from_records([pattern], 100, seed=0)
+                name: model.feed_iterator_from_records([pattern], 500, seed=0)
                 for name, pattern in test_datasets_pattern.items()}
             evalation_functions = [
                 model.get_evaluation(
