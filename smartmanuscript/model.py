@@ -367,8 +367,10 @@ class TrainingModel(EvaluationModel):
             sess.run(self.initializer)
             if learning_rate is not None:
                 sess.run(tf.assign(self.learning_rate, learning_rate))
-            sess.run(feed_iterator_from_dataset)
             while sess.run(self.epoch) < epoch_num:
+                sess.run(feed_iterator_from_dataset)
+                if sess.run(self.epoch) == epoch_num - 1:
+                    sess.run(tf.assign(self.learning_rate, self.learning_rate/5))
                 for step_in_epoch in itertools.count():
                     if step_in_epoch % steps_per_checkpoint == 0:
                         global_step = sess.run(self.global_step)
