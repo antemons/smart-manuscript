@@ -708,7 +708,7 @@ class InkFeatures:
         """ discretize the spline and try have DOTS_PER_UNIT dot per unit length
         """
         len_of_spline = spline[0][-1]
-        knots_of_spline = max(2, self.DOTS_PER_UNIT*len_of_spline)
+        knots_of_spline = int(max(2, self.DOTS_PER_UNIT*len_of_spline))
         u = np.linspace(0, len_of_spline, knots_of_spline)
         return u
 
