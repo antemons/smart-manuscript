@@ -139,25 +139,26 @@ class InferenceModel:
         with tf.variable_scope("forward_pass"):
             lstm_layer_input = tf.transpose(inputs, [1, 0, 2], name="inputs")
             for n_layer, num_hidden_neurons in enumerate(lstm_sizes):
-                # TODO(dv): add dropout?
-                lstm_cell_fw = tf.nn.rnn_cell.LSTMCell(
-                    num_hidden_neurons, state_is_tuple=True)
-                if n_layer != 0 or not share_param_first_layer:
-                    lstm_cell_bw = tf.nn.rnn_cell.LSTMCell(
+                with tf.variable_scope(f"BLSTM_layer_{n_layer+1}"):
+                    # TODO(dv): add dropout?
+                    lstm_cell_fw = tf.nn.rnn_cell.LSTMCell(
                         num_hidden_neurons, state_is_tuple=True)
-                else:
-                    lstm_cell_bw = lstm_cell_fw
-                outputs, _ = tf.nn.bidirectional_dynamic_rnn(
-                    lstm_cell_fw, lstm_cell_bw,
-                    inputs=lstm_layer_input, dtype=tf.float32,
-                    scope='BLSTM_' + str(n_layer + 1),
-                    sequence_length=lengths,
-                    time_major=True)
-                lstm_layer_output = tf.concat(outputs, 2)
-                lstm_layer_input = lstm_layer_output
-            output_values = tf.layers.dense(lstm_layer_output, num_classes)
-            #output_values = tf.transpose(output_values, [1, 0, 2], name="output")
-            output_lengths = tf.identity(lengths, name="lengths")
+                    if n_layer != 0 or not share_param_first_layer:
+                        lstm_cell_bw = tf.nn.rnn_cell.LSTMCell(
+                            num_hidden_neurons, state_is_tuple=True)
+                    else:
+                        lstm_cell_bw = lstm_cell_fw
+                    outputs, _ = tf.nn.bidirectional_dynamic_rnn(
+                        lstm_cell_fw, lstm_cell_bw,
+                        inputs=lstm_layer_input, dtype=tf.float32,
+                        sequence_length=lengths,
+                        time_major=True)
+                    lstm_layer_output = tf.concat(outputs, 2)
+                    lstm_layer_input = lstm_layer_output
+                    lengths = tf.identity(lengths, "length")
+            with tf.variable_scope(f"dense_layer"):
+                output_values = tf.layers.dense(lstm_layer_output, num_classes)
+                output_lengths = tf.identity(lengths, name="lengths")
         with tf.variable_scope("logits"):
             logit_values = tf.identity(output_values, name="values")
             logit_lengths = tf.identity(output_lengths, name="lengths")
