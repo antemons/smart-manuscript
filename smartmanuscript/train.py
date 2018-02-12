@@ -49,13 +49,13 @@ def read_flags():
     flags.DEFINE_integer(
         'epoch_num', 1, "Number of epochs to train")
     flags.DEFINE_integer(
-        'steps_per_checkpoint', 20, "")
+        'steps_per_checkpoint', 100, "")
     #flags.DEFINE_integer(
     #    'num_steps', 10000, "Number of batches to run")
     flags.DEFINE_float(
        'learning_rate', 0.003, "Learning rate for Optimizer")
-    #flags.DEFINE_float(
-    #   'learning_rate_fine', 0.0006, "Learning rate for fine-tuning")
+    flags.DEFINE_boolean(
+       'fine_tuning', True, "reduce learning rate to 20% for last epoch")
     #flags.DEFINE_integer(
     #   'num_final_steps', 1000,
     #   "Number of batches to run before learning_rate_fine is used")
@@ -77,16 +77,15 @@ def main():
         lstm_sizes=json.loads(FLAGS.lstm_sizes),
         share_param_first_layer=FLAGS.share_param_first_layer)
 
-    train_path_patterns = [
-        os.path.join(FLAGS.data_path, "train/ibm/*.tfrecord"),
-        os.path.join(FLAGS.data_path,"train/iam_line/*.tfrecord"),
-        os.path.join(FLAGS.data_path,"train/iam_word/*.tfrecord"),
-        os.path.join(FLAGS.data_path,"train/my_train/*.tfrecord")]
+    train_path_patterns = (4 * [os.path.join(FLAGS.data_path,"train/iam_line/*.tfrecord")] +
+        [os.path.join(FLAGS.data_path, "train/ibm/*.tfrecord"),
+         os.path.join(FLAGS.data_path,"train/iam_word/*.tfrecord"),
+         os.path.join(FLAGS.data_path,"train/my_train/*.tfrecord")])
 
     test_path_patterns = {
         "ibm": os.path.join(FLAGS.data_path,"test/ibm/*.tfrecord"),
         "iam_line": os.path.join(FLAGS.data_path,"test/iam_line/*.tfrecord"),
-        "ia_word": os.path.join(FLAGS.data_path,"test/iam_word/*.tfrecord"),
+        "iam_word": os.path.join(FLAGS.data_path,"test/iam_word/*.tfrecord"),
         "zen_test": os.path.join(FLAGS.data_path,"test/zen_test/*.tfrecord")}
 
     model.train(
@@ -95,7 +94,8 @@ def main():
         batch_size=FLAGS.batch_size,
         test_datasets_pattern=test_path_patterns,
         epoch_num=FLAGS.epoch_num,
-        steps_per_checkpoint=FLAGS.steps_per_checkpoint)
+        steps_per_checkpoint=FLAGS.steps_per_checkpoint,
+        fine_tuning=FLAGS.fine_tuning)
 
 if __name__ == "__main__":
     main()
