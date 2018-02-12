@@ -457,16 +457,20 @@ class InkNormalization:
     #     self._transform(transformation)
 
     @staticmethod
-    def normalized_width(ink):
+    def find_intersections(ink, y):
+        is_below = ink.concatenated_strokes[:, 1] < y
+        intersections = len([x for x, _ in groupby(is_below)])
+        return intersections
+
+    @classmethod
+    def normalized_width(cls, ink):
         """ normalize the width by using the average width between two
             intersections with line between base and mean line
 
         Args:
             strokes (Ink): ink to normalize
         """
-
-        is_below = ink.concatenated_strokes[:, 1] < 0.5
-        intersections = len([x for x, _ in groupby(is_below)])
+        intersections = cls.find_intersections(ink, 0.5)
 
         min_x, max_x, _, _ = ink.boundary_box
         width = max_x - min_x
