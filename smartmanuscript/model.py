@@ -296,8 +296,12 @@ class TrainingModel(EvaluationModel):
         """
         with tf.variable_scope("train_op"):
             optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-            train_op = optimizer.minimize(loss,
-                                          global_step=global_step)
+            gradients = optimizer.compute_gradients(loss)
+            capped_gradients = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gradients]
+            #train_op = optimizer.minimize(loss,
+            #                              global_step=global_step)
+            train_op = optimizer.apply_gradients(capped_gradients,
+                                                 global_step=global_step)
         return train_op
 
     @staticmethod
