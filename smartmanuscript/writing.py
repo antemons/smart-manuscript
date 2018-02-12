@@ -301,18 +301,29 @@ class InkNormalization:
         final_ink, final_transformation, steps = self._apply_normalizations(
             ink, self._normaliztion_steps(skew_is_horizontal), ret_steps=True)
         if axes is None:
-            _, axes = plt.subplots(3, 2)
+            fig, axes = plt.subplots(3, 2)
             axes = np.concatenate(list(axes))
-        for axis, (name, (ink, transformation)) in zip(axes, steps.items()):
+            fig.delaxes(axes[-1])
+        for (i, axis), (name, (ink, transformation)) in zip(enumerate(axes[:5]), steps.items()):
             ink.plot_pylab(
-                axis, name,
+                axis,
+                {"original": "original",
+                 "normalized_skew_and_mean": "skew",
+                 "normalized_slant": "slant",
+                 "normalized_baseline": "baseline/meanline",
+                 "normalized_width": "width"}[name],
                 auxiliary_lines = name in ["normalized_baseline",
                                            "normalized_width"])
 
-            if name == "original":
-                width = final_ink.boundary_box[1]
-                box = np.array([[0, 0], [width, 0], [width, 1], [0, 1]])
-                axis.scatter(*((~final_transformation) @ box).transpose())
+            # if name == "original":
+            #     width = final_ink.boundary_box[1]
+            #     box = np.array([[0, 0], [width, 0], [width, 1], [0, 1]])
+            #     axis.scatter(*((~final_transformation) @ box).transpose())
+
+            #if name == "normalized_width":
+            #    width = final_ink.boundary_box[1]
+            #    #box = np.array([[.5, 0], [width, 0], [width, 1], [0, 1]])
+            #    axis.scatter(*((~final_transformation) @ box).transpose())
 
             if name == "normalized_skew_and_mean":
                 axis.plot(ink.boundary_box[:2], [0, 0], 'k:')
@@ -505,14 +516,14 @@ class InkFeatures:
 
     @classmethod
     def plot(cls, features):
-        _, axes = plt.subplots(5, 3, sharex=True)
+        _, axes = plt.subplots(5, 3, sharex=True, sharey=True)
         axes = np.concatenate(list(axes))
         for feature, name, axis in zip(features.transpose(),
                                        cls.FEATURES_NAMES, axes):
             axis.set_aspect('equal')
-            axis.set_title(name)
+            axis.set_title(name, y=0)
             axis.scatter(
-                features[:, 0], features[:, 1],
+                features[:, 0], features[:, 1], marker='.',
                 c=feature, cmap=plt.cm.get_cmap('bwr'), edgecolors='face')
         plt.show()
 
@@ -998,21 +1009,21 @@ class InkFeatures:
         assert self.NUM_FEATURES == features.shape[1]
         return features
 
-    FEATURES_NAMES = ["x_position",
-                      "y_position",
-                      "x_low_pass_filtered",
-                      "pressure_start",
-                      "pressure_stop",
-                      "radius_normalized",
-                      "writing_direction_x",
-                      "writing_direction_y",
-                      "rough_tangent_x",
-                      "rough_tangent_y",
-                      "encased_from_top",
-                      "encased_from_below",
-                      "delta_x_extended",
-                      "delta_y_extended",
-                      "intersections"]
+    FEATURES_NAMES = ["x",
+                      "y",
+                      "high-pass filtered x",
+                      "stroke start",
+                      "stroke stop",
+                      "radius",
+                      "writing direction x",
+                      "writing direction y",
+                      "tangent x",
+                      "tangent y",
+                      "below a stroke",
+                      "above a stroke",
+                      "delta x",
+                      "delta y",
+                      "intersection"]
 
 def strokes_to_features(
         strokes,
