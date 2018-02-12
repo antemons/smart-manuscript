@@ -83,8 +83,9 @@ def _read_svg(filename, is_handwritten=None):
     is_handwritten = is_handwritten or is_black
 
     def remove_unit(string):
-        unit = re.findall("[a-z]+", string)[-1]
-        return string.replace(unit, "")
+        unit = re.findall("[a-z]+", string)
+        if unit:
+            return string.replace(unit[-1], "")
 
     strokes = []
     paths, properties, svg_attributes = svg2paths(
