@@ -330,7 +330,7 @@ class TrainingModel(EvaluationModel):
               dataset_patterns,
               path,
               test_datasets_pattern=None,
-              steps_per_checkpoint=100,
+              steps_per_checkpoint=250,
               epoch_num=1,
               batch_size=32,
               learning_rate=None,
@@ -370,10 +370,10 @@ class TrainingModel(EvaluationModel):
                 sess.run(tf.assign(self.learning_rate, learning_rate))
             while sess.run(self.epoch) < epoch_num:
                 sess.run(feed_iterator_from_dataset)
-                if sess.run(self.epoch) == epoch_num - 1:
+                if (sess.run(self.epoch) == epoch_num - 1) and fine_tuning:
                     sess.run(tf.assign(self.learning_rate, self.learning_rate/5))
                 for step_in_epoch in itertools.count():
-                    if step_in_epoch % steps_per_checkpoint == 0:
+                    if (step_in_epoch % steps_per_checkpoint == 0) and sess.run(self.global_step) > 0:
                         global_step = sess.run(self.global_step)
                         checkpoints_path = self._saver.save(
                             sess, os.path.join(path, "model"),
