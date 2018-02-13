@@ -71,11 +71,11 @@ class Ink:
                        np.array([[1, 0], [2, 0]]), np.array([[2, 1], [3, 1]])]
         >>> ink = Ink.from_corrupted_stroke(strokes)
         >>> print(ink)
-        [[ 0.  0.]
-         [ 1.  0.]
-         [ 2.  0.]]
-        [[ 2.  1.]
-         [ 3.  1.]]
+        [[0. 0.]
+         [1. 0.]
+         [2. 0.]]
+        [[2. 1.]
+         [3. 1.]]
         """
         strokes = deepcopy(strokes)
 
