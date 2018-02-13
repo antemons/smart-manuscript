@@ -27,6 +27,7 @@ import itertools
 from collections import namedtuple
 import tensorflow as tf
 from tensorflow.python.platform.app import flags
+from tensor2tensor.utils.data_reader import bucket_by_sequence_length
 from .utils import cached_property, colored_str_comparison
 from . import writing
 
@@ -187,7 +188,7 @@ class EvaluationModel(InferenceModel):
         self.loss = self._get_loss(self.target_tokens, *self.logits)
         self.summary = self._get_summary()
 
-    def feed_iterator_from_records(self, patterns, batch_size, seed=None):
+    def feed_iterator_from_records(self, patterns, batch_size, seed=None, bucketing=False):
         with self.graph.as_default():
             datasets = [tf.data.Dataset.list_files(pattern)
                         for pattern in patterns]
@@ -199,12 +200,25 @@ class EvaluationModel(InferenceModel):
             dataset = dataset.map(parse_tfrecords)
             dataset = dataset.shuffle(1000, seed)
             dataset = dataset.map(
-                lambda inputs, label: (inputs, tf.shape(inputs)[0], label))
-            dataset = dataset.padded_batch(
-                batch_size=batch_size,
-                padded_shapes=(tf.TensorShape([None, NUM_FEATURES]),
-                               tf.TensorShape([]),
-                               tf.TensorShape([])))
+                lambda inputs, label: {"inputs": inputs,
+                                       "length": tf.shape(inputs)[0],
+                                       "label": label})
+
+            padded_shapes = {"inputs": tf.TensorShape([None, NUM_FEATURES]),
+                             "length": tf.TensorShape([]),
+                             "label": tf.TensorShape([])}
+            if not bucketing:
+                dataset = dataset.padded_batch(
+                    batch_size=batch_size,
+                    padded_shapes=padded_shapes)
+            else:
+                dataset = bucket_by_sequence_length(
+                    dataset, lambda x: x["length"],
+                    [2 ** i for i in range(4, 12)],
+                    [max(batch_size, 2 ** (14 - i)) for i in range(4, 12)],
+                    padded_shapes)
+            dataset = dataset.map(
+                lambda x: (x["inputs"], x["length"], x["label"]))
             feed_iterator = self.iterator.make_initializer(dataset)
         return feed_iterator
 
@@ -346,7 +360,7 @@ class TrainingModel(EvaluationModel):
                                     self.DEFAULT_ALPHABET)
             model.save_meta(os.path.join(path, "evaluation.meta"))
         feed_iterator_from_dataset = self.feed_iterator_from_records(
-            dataset_patterns, batch_size=batch_size)
+            dataset_patterns, batch_size=batch_size, bucketing=True)
         summary_writer = self._get_summary_and_writer(
             os.path.join(path, "log", "train"))
 
