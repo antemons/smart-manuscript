@@ -295,7 +295,7 @@ class TrainingModel(EvaluationModel):
                             "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                             "1234567890 ,.:;*+()/!?&-'\"$")
     MAX_ABS_GRAD = 1.
-    LEARNING_RATE = 0.003
+    DEFAULT_LEARNING_RATE = 0.003
     EVALUATION_SIZE = 500
 
     def __init__(self, lstm_sizes, share_param_first_layer=True):
@@ -304,14 +304,15 @@ class TrainingModel(EvaluationModel):
             0, name='global_step', trainable=False)
         self.epoch = tf.Variable(0, name='epoch_num', trainable=False)
         self.increment_epoch = tf.assign_add(self.epoch, 1)
-        self.learning_rate = tf.Variable(self.LEARNING_RATE, name='learning_rate',
+        self.learning_rate = tf.Variable(self.DEFAULT_LEARNING_RATE,
+                                         name='learning_rate',
                                          trainable=False)
         self._get_summary = lambda : None
         super().__init__(lstm_sizes, share_param_first_layer,
                          alphabet=self.DEFAULT_ALPHABET)
         self._lstm_sizes = lstm_sizes
         self._share_param_first_layer = share_param_first_layer
-        self.train_op = self._get_train_op(
+        self.train_op, self.gradients = self._get_train_op(
             self.loss, self.global_step, self.learning_rate)
         self.initializer = self._get_initializer()
         self.summary = EvaluationModel._get_summary(self)
@@ -319,7 +320,7 @@ class TrainingModel(EvaluationModel):
 
     def _add_summary(self):
         super()._add_summary()
-        gradient_is_capped = [(tf.to_float(tf.equal(tf.abs(grad), max_abs_grad)), var)
+        gradient_is_capped = [(tf.to_float(tf.equal(tf.abs(grad), self.MAX_ABS_GRAD)), var)
                               for grad, var in self.gradients]
         frac_capped_gradients = (sum(tf.reduce_mean(v) * tf.to_float(tf.size(v)) for v, _ in gradient_is_capped) /
                                  tf.to_float(sum(tf.size(v) for v, _ in gradient_is_capped)))
@@ -331,7 +332,7 @@ class TrainingModel(EvaluationModel):
         #             tf.summary.scalar(name, value)
 
 
-    def _get_train_op(loss, global_step, learning_rate):
+    def _get_train_op(self, loss, global_step, learning_rate):
         """ return function to perform a single training step
         """
         with tf.variable_scope("train_op"):
@@ -343,7 +344,7 @@ class TrainingModel(EvaluationModel):
 
             train_op = optimizer.apply_gradients(capped_gradients,
                                                  global_step=global_step)
-        return train_op
+        return train_op, capped_gradients
 
     @staticmethod
     def _get_initializer():

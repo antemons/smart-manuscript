@@ -95,7 +95,8 @@ def main():
         test_datasets_pattern=test_path_patterns,
         epoch_num=FLAGS.epoch_num,
         steps_per_checkpoint=FLAGS.steps_per_checkpoint,
-        fine_tuning=FLAGS.fine_tuning)
+        fine_tuning=FLAGS.fine_tuning,
+        learning_rate=FLAGS.learning_rate)
 
 if __name__ == "__main__":
     main()
