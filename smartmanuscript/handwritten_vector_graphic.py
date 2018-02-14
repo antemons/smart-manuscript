@@ -114,7 +114,7 @@ def _read_svg(filename, is_handwritten=None):
 
 def _pdf_to_svg_tmp(pdf_path):
     pdf_basename = os.path.basename(pdf_path)
-    svg_basename = pdf_basename.replace(".pdf", ".svg")
+    svg_basename = pdf_basename.replace(".pdf", ".svg")  # Todo(dv): make case-insensitive
     svg_path = "/tmp/" + svg_basename
     # subprocess.call(["inkscape", "-l", svg_path, pdf_path])  (see TODO above)
     subprocess.call(["/usr/bin/pdftocairo", "-svg", pdf_path, svg_path])
