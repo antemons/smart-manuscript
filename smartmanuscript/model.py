@@ -215,7 +215,7 @@ class EvaluationModel(InferenceModel):
                 dataset = bucket_by_sequence_length(
                     dataset, lambda x: x["length"],
                     [2 ** i for i in range(4, 12)],
-                    [max(batch_size, 2 ** (14 - i)) for i in range(4, 12)],
+                    [batch_size] * 12, #[max(batch_size, 2 ** (14 - i)) for i in range(4, 12)],
                     padded_shapes)
             dataset = dataset.map(
                 lambda x: (x["inputs"], x["length"], x["label"]))
@@ -224,13 +224,17 @@ class EvaluationModel(InferenceModel):
 
     def _get_summary(self):
         with tf.name_scope('summaries'):
-            for name in self.SUMMARY_SCALARS:
-                tf.summary.scalar(name, self.__getattribute__(name))
-            batch_shape = tf.shape(self.input.values)
-            tf.summary.scalar('batch_size', batch_shape[0])
-            tf.summary.scalar('bucketing_length', batch_shape[1])
+            self._add_summary()
             summary = tf.summary.merge_all()
         return summary
+
+    def _add_summary(self):
+        for name in self.SUMMARY_SCALARS:
+            tf.summary.scalar(name, self.__getattribute__(name))
+        batch_shape = tf.shape(self.input.values)
+        tf.summary.scalar('batch_size', batch_shape[0])
+        tf.summary.scalar('bucketing_length', batch_shape[1])
+
 
     def _get_summary_and_writer(self, log_path):
         summary_writer = tf.summary.FileWriter(
@@ -290,34 +294,53 @@ class TrainingModel(EvaluationModel):
     DEFAULT_ALPHABET = list("abcdefghijklmnopqrstuvwxyz"
                             "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                             "1234567890 ,.:;*+()/!?&-'\"$")
+    MAX_ABS_GRAD = 1.
+    LEARNING_RATE = 0.003
+    EVALUATION_SIZE = 500
 
-    def __init__(self, lstm_sizes=[128, 128],
-                 share_param_first_layer=True):
+    def __init__(self, lstm_sizes, share_param_first_layer=True):
 
         self.global_step = tf.Variable(
             0, name='global_step', trainable=False)
         self.epoch = tf.Variable(0, name='epoch_num', trainable=False)
         self.increment_epoch = tf.assign_add(self.epoch, 1)
-        self.learning_rate = tf.Variable(0.003, name='learning_rate',
+        self.learning_rate = tf.Variable(self.LEARNING_RATE, name='learning_rate',
                                          trainable=False)
+        self._get_summary = lambda : None
         super().__init__(lstm_sizes, share_param_first_layer,
                          alphabet=self.DEFAULT_ALPHABET)
         self._lstm_sizes = lstm_sizes
         self._share_param_first_layer = share_param_first_layer
-        self.train_op = self._get_train_op(self.loss, self.global_step, self.learning_rate)
+        self.train_op = self._get_train_op(
+            self.loss, self.global_step, self.learning_rate)
         self.initializer = self._get_initializer()
+        self.summary = EvaluationModel._get_summary(self)
 
 
-    @staticmethod
+    def _add_summary(self):
+        super()._add_summary()
+        gradient_is_capped = [(tf.to_float(tf.equal(tf.abs(grad), max_abs_grad)), var)
+                              for grad, var in self.gradients]
+        frac_capped_gradients = (sum(tf.reduce_mean(v) * tf.to_float(tf.size(v)) for v, _ in gradient_is_capped) /
+                                 tf.to_float(sum(tf.size(v) for v, _ in gradient_is_capped)))
+        tf.summary.scalar("frac_capped_gradients", frac_capped_gradients)
+        # frac_capped_gradients = {var.name: tf.reduce_mean(val) for val, var in gradient_is_capped}
+        # for name, value in frac_capped_gradients.items():
+        #     with tf.name_scope('summaries'):
+        #         with tf.name_scope('frac_capped_gradients'):
+        #             tf.summary.scalar(name, value)
+
+
     def _get_train_op(loss, global_step, learning_rate):
         """ return function to perform a single training step
         """
         with tf.variable_scope("train_op"):
             optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
             gradients = optimizer.compute_gradients(loss)
-            capped_gradients = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gradients]
-            #train_op = optimizer.minimize(loss,
-            #                              global_step=global_step)
+
+            capped_gradients = [(tf.clip_by_value(grad, -self.MAX_ABS_GRAD, self.MAX_ABS_GRAD), var)
+                                for grad, var in gradients]
+
             train_op = optimizer.apply_gradients(capped_gradients,
                                                  global_step=global_step)
         return train_op
@@ -369,7 +392,7 @@ class TrainingModel(EvaluationModel):
 
         if test_datasets_pattern is not None:
             feed_iterator_from_datasets = {
-                name: model.feed_iterator_from_records([pattern], 500, seed=0)
+                name: model.feed_iterator_from_records([pattern], self.EVALUATION_SIZE, seed=0)
                 for name, pattern in test_datasets_pattern.items()}
             evalation_functions = [
                 model.get_evaluation(
