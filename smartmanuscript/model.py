@@ -226,6 +226,9 @@ class EvaluationModel(InferenceModel):
         with tf.name_scope('summaries'):
             for name in self.SUMMARY_SCALARS:
                 tf.summary.scalar(name, self.__getattribute__(name))
+            batch_shape = tf.shape(self.input.values)
+            tf.summary.scalar('batch_size', batch_shape[0])
+            tf.summary.scalar('bucketing_length', batch_shape[1])
             summary = tf.summary.merge_all()
         return summary
 
