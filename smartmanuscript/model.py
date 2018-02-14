@@ -351,13 +351,12 @@ class TrainingModel(EvaluationModel):
         return [tf.global_variables_initializer(),
                 tf.local_variables_initializer()]
 
-    def save_checkpoint(self, sess, global_step=None, path=None):
-        path = path or self.path
-        name = "model.ckpt"
-        path = os.path.join(self.path, name)
-        self._saver.save(
-            sess, path, global_step=global_step)
-        print("variables have been saved")
+    def save_checkpoint(self, sess, path, global_step):
+        checkpoints_path = self._saver.save(
+            sess, os.path.join(path, "model"),
+            global_step=global_step)
+        return checkpoints_path
+
 
     def _get_saver(self):
         var_list = (tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES) +
@@ -376,16 +375,17 @@ class TrainingModel(EvaluationModel):
               batch_size=32,
               learning_rate=None,
               fine_tuning=True):
+        path_models = os.path.join(path, "models")
         with tf.Graph().as_default():
             model = InferenceModel(self._lstm_sizes,
                                    self._share_param_first_layer,
                                    self.DEFAULT_ALPHABET)
-            model.save_meta(os.path.join(path, "inference.meta"))
+            model.save_meta(os.path.join(path_models, "inference.meta"))
         with tf.Graph().as_default():
             model = EvaluationModel(self._lstm_sizes,
                                     self._share_param_first_layer,
                                     self.DEFAULT_ALPHABET)
-            model.save_meta(os.path.join(path, "evaluation.meta"))
+            model.save_meta(os.path.join(path_models, "evaluation.meta"))
         feed_iterator_from_dataset = self.feed_iterator_from_records(
             dataset_patterns, batch_size=batch_size, bucketing=True)
         summary_writer = self._get_summary_and_writer(
@@ -416,9 +416,8 @@ class TrainingModel(EvaluationModel):
                 for step_in_epoch in itertools.count():
                     if (step_in_epoch % steps_per_checkpoint == 0) and sess.run(self.global_step) > 0:
                         global_step = sess.run(self.global_step)
-                        checkpoints_path = self._saver.save(
-                            sess, os.path.join(path, "model"),
-                            global_step=global_step)
+                        checkpoints_path = self.save_checkpoint(
+                            sess, path_models, global_step)
                         for evalation_function in evalation_functions:
                             evalation_function(checkpoints_path, global_step)
                     try:
