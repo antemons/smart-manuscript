@@ -27,6 +27,7 @@ import itertools
 from collections import namedtuple
 import tensorflow as tf
 from tensorflow.python.platform.app import flags
+from tensorflow.python.client import timeline
 from tensor2tensor.utils.data_reader import bucket_by_sequence_length
 from .utils import cached_property, colored_str_comparison
 from . import writing
@@ -374,8 +375,13 @@ class TrainingModel(EvaluationModel):
               epoch_num=1,
               batch_size=32,
               learning_rate=None,
-              fine_tuning=True):
+              fine_tuning=True,
+              profiling_steps=None):
         path_models = os.path.join(path, "models")
+        path_timeline = os.path.join(path, "timeline")
+        if profiling_steps is not None:
+            if not os.path.exists(path_timeline):
+                os.makedirs(path_timeline)
         with tf.Graph().as_default():
             model = InferenceModel(self._lstm_sizes,
                                    self._share_param_first_layer,
@@ -414,16 +420,28 @@ class TrainingModel(EvaluationModel):
                 if (sess.run(self.epoch) == epoch_num - 1) and fine_tuning:
                     sess.run(tf.assign(self.learning_rate, self.learning_rate/5))
                 for step_in_epoch in itertools.count():
-                    if (step_in_epoch % steps_per_checkpoint == 0) and sess.run(self.global_step) > 0:
-                        global_step = sess.run(self.global_step)
+                    global_step = sess.run(self.global_step)
+                    if (step_in_epoch % steps_per_checkpoint == 0) and global_step > 0:
                         checkpoints_path = self.save_checkpoint(
                             sess, path_models, global_step)
                         for evalation_function in evalation_functions:
                             evalation_function(checkpoints_path, global_step)
                     try:
-                        _, global_step, evaled_summary, loss = sess.run(
-                                [self.train_op, self.global_step, self.summary, self.loss])
+                        if (profiling_steps is not None) and (global_step in profiling_steps):
+                            run_metadata = tf.RunMetadata()
+                            args = dict(
+                                options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
+                                run_metadata=run_metadata)
+                        else:
+                            args = dict()
+                        _, evaled_summary, loss = sess.run(
+                                [self.train_op, self.summary, self.loss], **args)
                         summary_writer.add_summary(evaled_summary, global_step)
+                        if (profiling_steps is not None) and (global_step in profiling_steps):
+                            fetched_timeline = timeline.Timeline(run_metadata.step_stats)
+                            chrome_trace = fetched_timeline.generate_chrome_trace_format()
+                            with open(os.path.join(path_timeline, f'timeline_{global_step}.json'), 'w') as f:
+                                f.write(chrome_trace)
                         print(sess.run(self.epoch), step_in_epoch, loss)
                     except tf.errors.OutOfRangeError:
                         sess.run(self.increment_epoch)

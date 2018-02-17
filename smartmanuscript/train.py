@@ -41,6 +41,11 @@ def read_flags():
         'path', "vanilla", "Name of the network")
     flags.DEFINE_string(
         'lstm_sizes', "[120, 120]",  "List of LSTM-layer sizes (json)")
+    flags.DEFINE_string(
+        'profiling_steps', 'None',
+        "List of steps to profile, e.g. [0, 10, 100] "
+        "saves a file in timeline which can be opened in chrome "
+        "via chrome://tracing/")
     flags.DEFINE_boolean(
         'share_param_first_layer',
         True,
@@ -55,7 +60,7 @@ def read_flags():
     flags.DEFINE_float(
        'learning_rate', 0.003, "Learning rate for Optimizer")
     flags.DEFINE_boolean(
-       'fine_tuning', True, "reduce learning rate to 20% for last epoch")
+       'fine_tuning', True, r"reduce learning rate by a factor of 1/5 for last epoch")
     #flags.DEFINE_integer(
     #   'num_final_steps', 1000,
     #   "Number of batches to run before learning_rate_fine is used")
@@ -96,7 +101,8 @@ def main():
         epoch_num=FLAGS.epoch_num,
         steps_per_checkpoint=FLAGS.steps_per_checkpoint,
         fine_tuning=FLAGS.fine_tuning,
-        learning_rate=FLAGS.learning_rate)
+        learning_rate=FLAGS.learning_rate,
+        profiling_steps=json.loads(FLAGS.profiling_steps))
 
 if __name__ == "__main__":
     main()
