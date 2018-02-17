@@ -42,7 +42,7 @@ def read_flags():
     flags.DEFINE_string(
         'lstm_sizes', "[120, 120]",  "List of LSTM-layer sizes (json)")
     flags.DEFINE_string(
-        'profiling_steps', 'None',
+        'profiling_steps', '[]',
         "List of steps to profile, e.g. [0, 10, 100] "
         "saves a file in timeline which can be opened in chrome "
         "via chrome://tracing/")
