@@ -376,7 +376,8 @@ class TrainingModel(EvaluationModel):
               batch_size=32,
               learning_rate=None,
               fine_tuning=True,
-              profiling_steps=None):
+              profiling_steps=None,
+              bucketing=False):
         path_models = os.path.join(path, "models")
         path_timeline = os.path.join(path, "timeline")
         if profiling_steps is not None:
@@ -393,7 +394,7 @@ class TrainingModel(EvaluationModel):
                                     self.DEFAULT_ALPHABET)
             model.save_meta(os.path.join(path_models, "evaluation.meta"))
         feed_iterator_from_dataset = self.feed_iterator_from_records(
-            dataset_patterns, batch_size=batch_size, bucketing=True)
+            dataset_patterns, batch_size=batch_size, bucketing=bucketing)
         summary_writer = self._get_summary_and_writer(
             os.path.join(path, "log", "train"))
 

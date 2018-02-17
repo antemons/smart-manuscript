@@ -55,8 +55,6 @@ def read_flags():
         'epoch_num', 1, "Number of epochs to train")
     flags.DEFINE_integer(
         'steps_per_checkpoint', 100, "")
-    #flags.DEFINE_integer(
-    #    'num_steps', 10000, "Number of batches to run")
     flags.DEFINE_float(
        'learning_rate', 0.003, "Learning rate for Optimizer")
     flags.DEFINE_boolean(
@@ -64,6 +62,8 @@ def read_flags():
     #flags.DEFINE_integer(
     #   'num_final_steps', 1000,
     #   "Number of batches to run before learning_rate_fine is used")
+    flags.DEFINE_boolean(
+       'bucketing', False, "feed train data in buckets of similar size")
     flags.DEFINE_string(
        'data_path', "./records",
        "filepath to the tfrecords")
@@ -102,7 +102,8 @@ def main():
         steps_per_checkpoint=FLAGS.steps_per_checkpoint,
         fine_tuning=FLAGS.fine_tuning,
         learning_rate=FLAGS.learning_rate,
-        profiling_steps=json.loads(FLAGS.profiling_steps))
+        profiling_steps=json.loads(FLAGS.profiling_steps),
+        bucketing=FLAGS.bucketing)
 
 if __name__ == "__main__":
     main()
