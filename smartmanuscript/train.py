@@ -62,7 +62,7 @@ def read_flags():
     flags.DEFINE_string(
        'data_path', "./records",
        "filepath to the tfrecords")
-    flags.DEFINE_boolean(
+    flags.DEFINE_integer(
         'batch_size', 32, "Size of the training batch")
 
     return flags.FLAGS
