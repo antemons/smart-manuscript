@@ -257,8 +257,13 @@ parse = TraceParser()
 
 def main():
     import argparse
+    import os
     parser = argparse.ArgumentParser(description='InkML Reader')
-    parser.add_argument('file', default="test.inkml", type=str, nargs='?')
+    parser.add_argument('file',
+        default=os.path.join(
+            os.path.dirname(__file__), 'data', 'sample_text', 'example.inkml'),
+        type=str,
+        help="inkml-file to be displayed")
     args = parser.parse_args()
     inkml = InkML(args.file)
     inkml.plot()
