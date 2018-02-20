@@ -141,7 +141,7 @@ class InferenceModel:
         with tf.variable_scope("forward_pass"):
             lstm_layer_input = tf.transpose(inputs, [1, 0, 2], name="inputs")
             for n_layer, num_hidden_neurons in enumerate(lstm_sizes):
-                with tf.variable_scope(f"BLSTM_layer_{n_layer+1}"):
+                with tf.variable_scope("BLSTM_layer_" + str(n_layer+1)):
                     # TODO(dv): add dropout?
                     lstm_cell_fw = tf.nn.rnn_cell.LSTMCell(
                         num_hidden_neurons, state_is_tuple=True)
@@ -158,7 +158,7 @@ class InferenceModel:
                     lstm_layer_output = tf.concat(outputs, 2)
                     lstm_layer_input = lstm_layer_output
                     lengths = tf.identity(lengths, "length")
-            with tf.variable_scope(f"dense_layer"):
+            with tf.variable_scope("dense_layer"):
                 output_values = tf.layers.dense(lstm_layer_output, num_classes)
                 output_lengths = tf.identity(lengths, name="lengths")
         with tf.variable_scope("logits"):
@@ -441,7 +441,7 @@ class TrainingModel(EvaluationModel):
                         if (profiling_steps is not None) and (global_step in profiling_steps):
                             fetched_timeline = timeline.Timeline(run_metadata.step_stats)
                             chrome_trace = fetched_timeline.generate_chrome_trace_format()
-                            with open(os.path.join(path_timeline, f'timeline_{global_step}.json'), 'w') as f:
+                            with open(os.path.join(path_timeline, 'timeline_{}.json' % (global_step,)), 'w') as f:
                                 f.write(chrome_trace)
                         print(sess.run(self.epoch), step_in_epoch, loss)
                     except tf.errors.OutOfRangeError:
