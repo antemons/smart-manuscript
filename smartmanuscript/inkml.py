@@ -231,8 +231,8 @@ class TraceParser:
     >>> parse = TraceParser()
     >>> trace ="10 0, 9 14"
     >>> print(parse(trace))
-    [[ 10.   0.]
-     [  9.  14.]]
+    [[10.  0.]
+     [ 9. 14.]]
     """
 
     def __call__(self, trace):
