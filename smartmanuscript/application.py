@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 """
     This file is part of Smart Manuscript.
 
@@ -31,7 +30,7 @@ import os
 import sys
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import gi
-#gi.require_version('Gtk', '3.0')
+gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk
 try:
     from xinput import operate_xinput_device, MODE_ENABLE, MODE_DISABLE
@@ -156,6 +155,7 @@ class HandwrittenInput(Gtk.Window):
     def on_mouse_move(self, _, event):
         """ add new point to the strokes
         """
+
         if (event.x, event.y) != tuple(self.strokes[-1][-1]):
             point = [event.x, event.y]
             self.strokes[-1].append(point)
@@ -191,8 +191,7 @@ class HandwrittenInput(Gtk.Window):
             stroke[:, 1] = - stroke[:, 1] + 200
             stroke = stroke / 100
             strokes.append(stroke)
-        predictions = self.recognizer.recognize(
-            strokes, num_proposals=self._num_proposals)
+        top_prediction, predictions, probabilities = self.recognizer.recognize_line(strokes)
         for button, prediction in zip(self.buttons, predictions):
             button.set_label(prediction)
             button.show()

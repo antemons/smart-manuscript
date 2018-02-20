@@ -94,7 +94,7 @@ class Reader:
         normalized_probabilities = 100 * probabilities / np.sum(probabilities, axis=1)[:, None]
         decoded_labels = [[proposal.decode() for proposal in example] for example in labels]
 
-        return [l for l in decoded_labels[0]], decoded_labels, normalized_probabilities
+        return [l for l in decoded_labels[0]], labels, normalized_probabilities
 
 
     def recognize_line(self, ink):
@@ -114,8 +114,8 @@ class Reader:
 
         normalized_probabilities = 100 * probabilities / np.sum(probabilities, axis=1)
         decoded_labels = [[proposal.decode() for proposal in example] for example in labels]
-        print(decoded_labels[0][0], f"({int(normalized_probabilities[0][0])}%)")
-        return decoded_labels[0][0], decoded_labels[0], normalized_probabilities[0]
+        print(decoded_labels[0][0], str(int(normalized_probabilities[0][0]))+"%")
+        return decoded_labels[0][0], [l[0] for l in decoded_labels], normalized_probabilities[0]
 
     def recognize_page(
             self, stroke_page):
