@@ -2,13 +2,13 @@
 
 This software recognizes (digitizes) handwritten manuscripts and digitizer-pen input.
 
-Note, it can only transcribe online handwriting (generated e.g. by smart pens) but no scanned pages.
+Note, it can only recognize online handwriting (i.e. vector graphics which are generated e.g. by smart pens) but no scanned pages.
 
 ## Getting Started
 
 ### Setup
 
- 1. (Create Virtual Environment)
+ 1. (Create Virtual Environment with Python>=3.5)
 
         virtualenv env -p /usr/bin/python3
         source env/bin/activate
@@ -36,7 +36,7 @@ Test, e.g., as input "smart-manuscript/smartmanuscript/data/sample_text/The_Zen_
 
 #### Handwritten input
 
-A simple application that transcribes handwritten input (e.g. from a digitizer pen):
+A simple application that recognizes handwritten input (e.g. from a digitizer pen):
 
     python -m smartmanuscript.application
 
@@ -73,7 +73,7 @@ The input will be copied into the clipboard.
   <img src="smartmanuscript/data/sample_text/The_Zen_of_Python.png" width="75%" height="75%">
 </a>
 
-Transcription:
+Recognized text (with some errors):
 
 <pre>
 The zen of Python.
@@ -101,6 +101,13 @@ a good idea.
 Namespaces are one hanking great idea -
 let's do more of thosel
 </pre>
+
+
+## Troubleshooting
+
+To install the python package cairo, I had to install python3-dev on Ubuntu first via
+
+    apt-get install python3-dev
 
 ## Author
 
