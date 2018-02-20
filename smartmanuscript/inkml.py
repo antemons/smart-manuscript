@@ -166,7 +166,7 @@ class InkML:
         if transcription is not None:
             axes.set_title(transcription)
         for stroke in self.ink():
-            axes.plot(stroke[:, 0], stroke[:, 1], 'k-')
+            axes.plot(stroke[:, 0], - stroke[:, 1], 'k-')
         axes.set_aspect('equal')
         if hide_ticks:
             axes.get_xaxis().set_ticks([])
@@ -265,6 +265,4 @@ def main():
     plt.show()
 
 if __name__ == "__main__":
-    import doctest
-    doctest.testmod()
     main()
