@@ -26,8 +26,8 @@ from svgpathtools import svg2paths
 import os
 import subprocess
 import re
-from .writing import InkPage
 
+from .writing import InkPage
 from .utils import Transformation
 
 
@@ -74,7 +74,7 @@ def _read_svg(filename, is_handwritten=None):
 
     # ToDo(dv): implement that also global transformation are condisdered
     #           It seems that these transformation are used by InkScape but
-    #           not by pdf2cairo (which is here used to convert PDF->SVG)
+    #           not by pdftocairo (which is here used to convert PDF->SVG)
 
     def is_black(path):
         return any("style" in path and color in path["style"]
@@ -134,13 +134,9 @@ def main(svg_filename):
     ink.plot_pylab()
     plt.show()
 
-    for line in ink.lines:
-        line.plot_pylab()
-        plt.show()
-
 
 if __name__ == "__main__":
-    from tensorflow.python.platform.app import flags
+    from tensorflow import flags
     FLAGS = flags.FLAGS
     flags.DEFINE_string(
         "file",  os.path.join(os.path.dirname(__file__),
