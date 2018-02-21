@@ -29,7 +29,7 @@ from copy import deepcopy
 
 from .corpus import Corpus, Corpora, TranscriptedStrokes
 from .inkml import InkML, TraceView
-
+from .writing import Ink
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
@@ -81,7 +81,7 @@ class IAMonDo(InkML):
             try:
                 transcription = textline.annotation[self.TRANSCRIPTION]
             except KeyError:
-                print(f'Warning: transcription for file {self.filename} not found, skipping')
+                print('Warning: transcription for file {} not found, skipping'.format(self.filename))
                 continue
             yield TranscriptedStrokes(
                 transcription=transcription,
@@ -110,10 +110,10 @@ def load(path, max_files=None):
         print("import {:4}/{:4} ({:10})".format(i, len(files), name), end="\r")
         inkml = IAMonDo(path)
         corpara_word[name] = Corpus(
-            TranscriptedStrokes(segment.transcription, segment.strokes)
+            segment #TranscriptedStrokes(segment.transcription, segment.strokes)
             for segment in inkml.get_segments(IAMonDo.WORD))
         corpara_line[name] = Corpus(
-            TranscriptedStrokes(segment.transcription, segment.strokes)
+            segment #TranscriptedStrokes(segment.transcription, segment.strokes)
             for segment in inkml.get_segments(IAMonDo.TEXTLINE))
 
     print("{:30}".format(""), end="\r")
@@ -138,10 +138,10 @@ def _import_set(iam_on_db_path, set_filename, max_files=None):
         try:
             num_files += 1
             inkml = IAMonDo(inkml_filename)
-            new_words = Corpus(TranscriptedStrokes(segment.transcription, segment.strokes)
+            new_words = Corpus(segment #TranscriptedStrokes(segment.transcription, segment.strokes)
                                for segment in inkml.get_segments(IAMonDo.WORD))
             corpus_word.extend(new_words)
-            new_lines = Corpus(TranscriptedStrokes(segment.transcription, segment.strokes)
+            new_lines = Corpus(segment #TranscriptedStrokes(segment.transcription, segment.strokes)
                                 for segment
                                 in inkml.get_segments(IAMonDo.TEXTLINE))
             corpus_line.extend(new_lines)
@@ -158,7 +158,7 @@ def _import_set(iam_on_db_path, set_filename, max_files=None):
 
 
 def main():
-    """ load the full IAMonDo database and show random lines and transcription
+    """Load the full IAMonDo database and show random lines and transcription
     """
 
     words, lines = _import_set(flags.FLAGS.iam_on_do_path, "0.set", max_files=10)
