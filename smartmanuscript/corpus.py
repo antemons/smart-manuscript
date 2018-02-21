@@ -26,7 +26,7 @@ import glob
 import os
 from collections import namedtuple
 
-from .writing import InkPage
+from .writing import InkPage, Ink
 
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
@@ -44,7 +44,7 @@ class Corpus(list):
         _, axes_arr = plt.subplots(rows, columns)
         for axes in axes_arr.reshape(-1):
             transcription, ink = choice(self)
-            ink.plot_pylab(axes, transcription)
+            Ink(ink).plot_pylab(axes, transcription)
         plt.show()
 
     def __getitem__(self, val):
