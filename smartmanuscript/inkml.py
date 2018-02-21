@@ -25,6 +25,7 @@ import re
 import numpy as np
 import pylab as plt
 from functools import reduce
+from collections import OrderedDict
 
 from .utils import cached_property
 
@@ -71,12 +72,14 @@ class Element:
 
     @cached_property
     def _trace(self):
-        return reduce(lambda a, b: dict(a, **b),
-                      (child._trace for child in self), {})
+        ret = OrderedDict()
+        for child in self:
+            ret.update(**child._trace)
+        return ret
 
     def ink(self, trace_refs=None):
         if trace_refs is None:
-            return list(trace for _, trace in sorted(self._trace.items()))
+            return list(trace for _, trace in self._trace.items())
         else:
             return [self._trace[trace_ref.replace("#", "")]
                     for trace_ref in trace_refs]
