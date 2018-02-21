@@ -150,7 +150,11 @@ class InkML:
     Documentation: https://www.w3.org/2003/InkML
     """
 
-    def __init__(self, filename):
+    @staticmethod
+    def flip_y(ink):
+        return [np.array([1, -1])[None, :] * stroke for stroke in ink]
+
+    def __init__(self, filename, flip_y=False):
 
         with open(filename) as file_:
             xmlstring = file_.read()
@@ -158,9 +162,13 @@ class InkML:
         self.filename = filename
         self.xml_root = ET.fromstring(xmlstring)
         self._root = Element.from_xml_node(self.xml_root)
+        self._y_axis_needs_flip = flip_y
 
     def ink(self, trace_refs=None):
-        return self._root.ink(trace_refs)
+        if not self._y_axis_needs_flip:
+            return self._root.ink(trace_refs)
+        else:
+            return self.flip_y(self._root.ink(trace_refs))
 
     def plot(self, axes=None, transcription=None,
              hide_ticks=False):
@@ -169,7 +177,7 @@ class InkML:
         if transcription is not None:
             axes.set_title(transcription)
         for stroke in self.ink():
-            axes.plot(stroke[:, 0], - stroke[:, 1], 'k-')
+            axes.plot(stroke[:, 0], stroke[:, 1], 'k-')
         axes.set_aspect('equal')
         if hide_ticks:
             axes.get_xaxis().set_ticks([])
@@ -268,7 +276,7 @@ def main():
         type=str,
         help="inkml-file to be displayed")
     args = parser.parse_args()
-    inkml = InkML(args.file)
+    inkml = InkML(args.file, flip_y=True)
     inkml.plot()
     plt.show()
 
