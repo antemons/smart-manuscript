@@ -332,6 +332,8 @@ class InkNormalization:
                 minima, maxima = ink.get_extrema()
                 axis.scatter(*minima.transpose(), c='b', edgecolors='face')
                 axis.scatter(*maxima.transpose(), c='r', edgecolors='face')
+        plt.suptitle("normalization")
+        plt.show()
         return final_ink, final_transformation
 
 
@@ -525,6 +527,7 @@ class InkFeatures:
             axis.scatter(
                 features[:, 0], features[:, 1], marker='.',
                 c=feature, cmap=plt.cm.get_cmap('bwr'), edgecolors='face')
+        plt.suptitle("features")
         plt.show()
 
     @classmethod
@@ -1055,5 +1058,26 @@ def plot_features(features, transcription=None, axes=None):
     axes.plot([min(x), max(x)], [1, 1], 'k:')
     axes.plot(x, y, "g-")
     axes.set_aspect('equal')
-    # tmp = InkFeatures.from_features(features)
-    # tmp.plot_all()
+
+
+if __name__ == "__main__":
+    from . import handwritten_vector_graphic
+    from . import utils
+    from .inkml import InkML
+    import os
+    #strokes, page_size = handwritten_vector_graphic.load(filename="../presentation/example.svg")
+    #ink = Ink(strokes)
+    #inkml_path = "../data/IAMonDo-db-1.0/211.inkml"
+    inkml_path = os.path.join(
+        os.path.dirname(__file__), 'data', 'sample_text', 'example.inkml')
+    inkml = InkML(inkml_path)
+    ink = utils.Transformation.mirror(0) @ Ink(inkml.ink())
+
+    ink.plot_pylab()
+    plt.title("original ink")
+    plt.show()
+
+    ink, _ = normalized.plot(ink)
+
+    features = strokes_to_features(ink.strokes)
+    InkFeatures.plot(features)
