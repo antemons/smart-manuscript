@@ -8,7 +8,7 @@ Note, it can only recognize online handwriting (i.e. vector graphics which are g
 
 ### Setup
 
- 1. (Create Virtual Environment with Python>=3.5)
+ 1. Optional: create virtual environment with Python >= 3.5
 
         virtualenv env -p /usr/bin/python3
         source env/bin/activate
@@ -108,6 +108,14 @@ let's do more of thosel
 To install the python package cairo, I had to install python3-dev on Ubuntu first via
 
     apt-get install python3-dev
+
+## Tests
+
+To run test, you can execute
+
+    python -m pytest
+
+in the source-code folder smartmanuscript
 
 ## Author
 

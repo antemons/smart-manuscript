@@ -36,7 +36,7 @@ import tensorflow as tf
 from . import corpus_iam
 from . import corpus_ibm
 from .corpus import Corpus, Corpora, TranscriptedStrokes
-from .handwritten_vector_graphic import load as load_pdf
+from .handwritten_vector_graphic import LabeledSVG
 from .writing import strokes_to_features, plot_features, InkPage
 from .preprocessing import preprocessed_corpus
 
@@ -59,27 +59,7 @@ def read_flags():
     return flags.FLAGS
 
 
-def from_pdf(filename):
-    """ Read strokes from a pdf/svg file and its correspoding transcription.
-
-    The transcription must be in the file with same name und .txt suffix
-
-    Args:
-        filename (str): path to the pdf or svg file
-    """
-    transcription_filename = os.path.splitext(filename)[0] + ".txt"
-    strokes, page_size = load_pdf(filename)
-    page = InkPage(strokes, page_size)
-    with open(transcription_filename) as f:
-        transcriptions = [l.replace("\n", "") for l in f.readlines()]
-    assert len(page.lines) == len(transcriptions), \
-        filename + " %i != %i" % (len(page.lines), len(transcriptions))
-
-    return Corpus(TranscriptedStrokes(transcription, line.strokes)
-                  for transcription, line in zip(transcriptions, page.lines))
-
-
-def read_pdf_folder(path, max_files=None):
+def read_svg_from_folder(path, max_files=None):
     """ Load all strokes from pdf/svg and text from txt files of a folder.
 
     Read all pdf and svg files of a folder, extract its strokes and
@@ -92,12 +72,12 @@ def read_pdf_folder(path, max_files=None):
     """
     corpora = Corpora()
 
-    files = (glob.glob(os.path.join(path, "*.svg")) +
-             glob.glob(os.path.join(path, "*.svg")))[:max_files]
-    for i, path in enumerate(files):
-        name = os.path.basename(path)
+    files = glob.glob(os.path.join(path, "*.svg"))[:max_files]
+    for i, filename in enumerate(files):
+        name = os.path.basename(filename)
         print("import {:4}/{:4} ({:20})".format(i, len(files), name), end="\r")
-        corpus = from_pdf(path)
+        document = LabeledSVG(filename)
+        corpus = Corpus(document.get_segments())
         corpora[name] = corpus
     return corpora
 
@@ -135,20 +115,23 @@ def create_records(
     if not load_corpora_from_pickle:
 
         corpora_dict = {}
+
         corpora_dict["ibm"] = corpus_ibm.load(ibm_ub_path,
                                               max_files=max_files)
+
         corpora_dict["iam_word"], corpora_dict["iam_line"] = \
             corpus_iam.load(iam_on_do_path, max_files=max_files)
 
-        corpora_dict["my_train"] = read_pdf_folder(my_handwriting_train_path,
-                                                   max_files=max_files)
-        corpora_dict["my_test"] = read_pdf_folder(my_handwriting_test_path,
-                                                  max_files=max_files)
+        corpora_dict["my_train"] = read_svg_from_folder(my_handwriting_train_path,
+                                                        max_files=max_files)
+
+        corpora_dict["my_test"] = read_svg_from_folder(my_handwriting_test_path,
+                                                       max_files=max_files)
 
         modul_dir, _ = os.path.split(__file__)
-        sample_text_path = os.path.join(modul_dir, "data", "sample_text", "The_Zen_of_Python.pdf")
+        sample_text_path = os.path.join(modul_dir, "data", "sample_text", "The_Zen_of_Python.svg")
         corpora_dict["zen_test"] = Corpora(
-            zen_test=from_pdf(sample_text_path))
+            zen_test=Corpus(LabeledSVG(sample_text_path).get_segments()))
 
         if not os.path.exists(output_path):
             os.makedirs(output_path)

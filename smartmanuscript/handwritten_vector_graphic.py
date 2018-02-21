@@ -26,6 +26,7 @@ from svgpathtools import svg2paths
 import os
 import subprocess
 import re
+from collections import namedtuple
 
 from .writing import InkPage
 from .utils import Transformation
@@ -34,6 +35,10 @@ from .utils import Transformation
 __author__ = "Daniel Vorberg"
 __copyright__ = "Copyright (c) 2017, Daniel Vorberg"
 __license__ = "GPL"
+
+
+TranscriptedStrokes = namedtuple('TranscriptedStrokes',
+                                 ['transcription', 'strokes'])
 
 
 def load(filename):
@@ -88,6 +93,7 @@ def _read_svg(filename, is_handwritten=None):
             return string.replace(unit[-1], "")
 
     strokes = []
+    print(filename, "'''''''''''''''''''''''''")
     paths, properties, svg_attributes = svg2paths(
         filename,
         return_svg_attributes=True)
@@ -124,6 +130,26 @@ def _pdf_to_svg_tmp(pdf_path):
 def _read_pdf(filename, is_handwritten=None):
     svg_filename = _pdf_to_svg_tmp(filename)
     return _read_svg(svg_filename, is_handwritten)
+
+
+
+class LabeledSVG:
+    def __init__(self, filename):
+        self._filename = filename
+
+    def get_segments(self):
+        label_filename = os.path.splitext(self._filename)[0] + ".txt"
+        strokes, page_size = _read_svg(self._filename)
+        page = InkPage(strokes, page_size)
+        with open(label_filename) as f:
+            transcriptions = [l.replace("\n", "") for l in f.readlines()]
+        assert len(page.lines) == len(transcriptions), \
+            self._filename + " %i != %i" % (len(page.lines), len(transcriptions))
+
+        for transcription, line in zip(transcriptions, page.lines):
+            yield TranscriptedStrokes(
+                transcription=transcription,
+                strokes=line.strokes)
 
 
 def main(svg_filename):
