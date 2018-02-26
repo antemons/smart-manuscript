@@ -81,6 +81,13 @@ def preprocessed_corpus(corpus, min_words=0, min_letters=1,
             sorted_out["too_few_letters"] += 1
             continue
 
+        if transcription in ['.', ',', "'"]:
+            warnings.warn(PreprocessWarning("only a single dot",
+                                            example.transcription))
+            sorted_out["dot"] += 1
+            continue
+
+
         if len(transcription.split(" ")) < min_words:
             warnings.warn(PreprocessWarning("too short transcription",
                                             example.transcription))
