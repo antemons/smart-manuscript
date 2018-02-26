@@ -22,7 +22,7 @@
 
 import pickle
 from os.path import join as join_path
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 import warnings
 
 from .writing import strokes_to_features, NormalizationWarning
@@ -64,12 +64,7 @@ def preprocessed_corpus(corpus, min_words=0, min_letters=1,
                         skew_is_horizontal=False):
     warnings.simplefilter('error', NormalizationWarning)
     result = []
-    sorted_out = dict(too_few_words=0,
-                      too_few_letters=0,
-                      normalization_waring=0,
-                      symbol_not_in_alphabet=0,
-                      too_few_features=0,
-                      baseline_misalign=0)
+    sorted_out = defaultdict(lambda: 0)
     for i, example in enumerate(corpus):
         if (i % 100) == 0:
             print(
