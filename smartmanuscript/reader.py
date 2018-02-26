@@ -97,14 +97,14 @@ class Reader:
         return [l for l in decoded_labels[0]], labels, normalized_probabilities
 
 
-    def recognize_line(self, ink):
+    def recognize_line(self, ink, resort=False):
         """ generate the transcription suggenstions
 
         Args:
             ink (nested list of arrays[N,2]): the trajectories
         """
 
-        features = strokes_to_features(ink)
+        features = strokes_to_features(ink, resort=resort)
         feed_dict = {self.inputs.values: np.expand_dims(features, 0),
                      self.inputs.length: np.array([len(features)])}
 

@@ -1034,7 +1034,7 @@ def strokes_to_features(
         skew_is_horizontal=False,
         resort=False,
         ret_transformation=False):
-    ink = Ink.from_corrupted_stroke(strokes, skew_is_horizontal)
+    ink = Ink.from_corrupted_stroke(strokes, resort)
     if normalize:
         ink, transformation = normalized(
             ink, skew_is_horizontal=skew_is_horizontal)
