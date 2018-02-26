@@ -93,7 +93,6 @@ def _read_svg(filename, is_handwritten=None):
             return string.replace(unit[-1], "")
 
     strokes = []
-    print(filename, "'''''''''''''''''''''''''")
     paths, properties, svg_attributes = svg2paths(
         filename,
         return_svg_attributes=True)
