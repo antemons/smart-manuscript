@@ -122,3 +122,62 @@ def preprocessed_corpus(corpus, min_words=0, min_letters=1,
         result.append(labeled_features)
 
     return result
+
+
+def plot_all_steps(strokes):
+    _, axes = plt.subplots(5, 2)
+    ink = Ink.from_corrupted_stroke(strokes)
+    ink, _ = normalized_ink.plot(ink, axes=axes[:, 0])
+    strokes_features = InkFeatures(ink)
+    strokes_features.plot_all(axes=axes[:, 1])
+    plt.show()
+
+
+def main():
+    from tensorflow import flags
+    from smartmanuscript.records import from_pdf
+    from tensorflow.python.platform.app import flags
+    from smartmanuscript.corpus import Corpus
+    from .writing import Ink
+    import pylab as plt
+    FLAGS = flags.FLAGS
+    flags.DEFINE_integer("num", 0, "select line number")
+    flags.DEFINE_string(
+        "source", "sample",
+        "[sample, iamondb, ibmub] draw examples from IAMonDo-db-1 or IBM_UB_1 "
+        "or use the sample")
+    flags.DEFINE_boolean(
+        "all_steps", True, "")
+    flags.DEFINE_string(
+        "file", "../smartmanuscript/data/sample_text/The_Zen_of_Python.pdf",
+        "file to show features (either PDF or SVG)")
+
+    if FLAGS.source == "sample":
+        corpus = from_pdf(FLAGS.file)
+    elif FLAGS.source == "iamondb":
+        from smartmanuscript.corpus_iam import IAMonDo
+        inkml = IAMonDo("data/IAMonDo-db-1.0/002.inkml")
+        corpus = Corpus((segment.transcription, Ink(segment.strokes))
+                        for segment in inkml.get_segments(IAMonDo.TEXTLINE))
+    elif FLAGS.source == "ibmub":
+        from smartmanuscript.corpus_ibm import IBMub
+        inkml = IBMub("data/IBM_UB_1/query/OALquery_60.inkml")
+        corpus = Corpus((segment.transcription, Ink(segment.strokes))
+                        for segment in inkml.get_segments())
+    else:
+        raise ValueError
+
+    ink = corpus[FLAGS.num][1]
+    ink.plot_pylab()
+    plt.title("original ink")
+    plt.show()
+
+    ink, _ = normalized.plot(ink)
+
+    features = strokes_to_features(ink.strokes)
+    InkFeatures.plot(features)
+
+
+
+if __name__ == "__main__":
+    main()
