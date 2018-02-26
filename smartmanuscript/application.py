@@ -235,7 +235,7 @@ class HandwrittenInput(Gtk.Window):
             stroke[:, 1] = - stroke[:, 1] + 200
             stroke = stroke / 100
             strokes.append(stroke)
-        top_prediction, predictions, probabilities = self.recognizer.recognize_line(strokes)
+        top_prediction, predictions, probabilities = self.recognizer.recognize_line(strokes, resort=True)
         for button, prediction in zip(self.buttons, predictions):
             button.set_label(prediction)
             button.show()
