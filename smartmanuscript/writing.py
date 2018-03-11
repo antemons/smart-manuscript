@@ -332,7 +332,7 @@ class InkNormalization:
                 minima, maxima = ink.get_extrema()
                 axis.scatter(*minima.transpose(), c='b', edgecolors='face')
                 axis.scatter(*maxima.transpose(), c='r', edgecolors='face')
-        plt.suptitle("normalization")
+        #plt.suptitle("normalization")
         plt.show()
         return final_ink, final_transformation
 
@@ -527,7 +527,7 @@ class InkFeatures:
             axis.scatter(
                 features[:, 0], features[:, 1], marker='.',
                 c=feature, cmap=plt.cm.get_cmap('bwr'), edgecolors='face')
-        plt.suptitle("features")
+        # plt.suptitle("features")
         plt.show()
 
     @classmethod
