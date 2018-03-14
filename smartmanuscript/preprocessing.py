@@ -47,6 +47,7 @@ def preprocessed_transcription(transcription):
     transcription = transcription.replace(" ,", ",")
     transcription = transcription.replace("`", "'")
     transcription = transcription.rstrip(" ")
+    transcription = transcription.replace("<Symbol/>", "+")
     transcription = transcription.replace(b'\xc2\xb4'.decode(), "'")
     return transcription
 
