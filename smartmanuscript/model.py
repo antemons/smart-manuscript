@@ -380,9 +380,11 @@ class TrainingModel(EvaluationModel):
               bucketing=False):
         path_models = os.path.join(path, "models")
         path_timeline = os.path.join(path, "timeline")
-        if profiling_steps is not None:
+        if profiling_steps:
             if not os.path.exists(path_timeline):
                 os.makedirs(path_timeline)
+        else:
+            profiling_steps = []
         with tf.Graph().as_default():
             model = InferenceModel(self._lstm_sizes,
                                    self._share_param_first_layer,
@@ -419,7 +421,7 @@ class TrainingModel(EvaluationModel):
             while sess.run(self.epoch) < epoch_num:
                 sess.run(feed_iterator_from_dataset)
                 if (sess.run(self.epoch) == epoch_num - 1) and fine_tuning:
-                    sess.run(tf.assign(self.learning_rate, self.learning_rate/5))
+                    sess.run(tf.assign(self.learning_rate, 0.1 * self.learning_rate))
                 for step_in_epoch in itertools.count():
                     global_step = sess.run(self.global_step)
                     if (step_in_epoch % steps_per_checkpoint == 0) and global_step > 0:
@@ -428,7 +430,8 @@ class TrainingModel(EvaluationModel):
                         for evalation_function in evalation_functions:
                             evalation_function(checkpoints_path, global_step)
                     try:
-                        if (profiling_steps is not None) and (global_step in profiling_steps):
+                        if global_step in profiling_steps:
+                            print("profiling")
                             run_metadata = tf.RunMetadata()
                             args = dict(
                                 options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
@@ -438,7 +441,7 @@ class TrainingModel(EvaluationModel):
                         _, evaled_summary, loss = sess.run(
                                 [self.train_op, self.summary, self.loss], **args)
                         summary_writer.add_summary(evaled_summary, global_step)
-                        if (profiling_steps is not None) and (global_step in profiling_steps):
+                        if global_step in profiling_steps:
                             fetched_timeline = timeline.Timeline(run_metadata.step_stats)
                             chrome_trace = fetched_timeline.generate_chrome_trace_format()
                             with open(os.path.join(path_timeline, 'timeline_{}.json' % (global_step,)), 'w') as f:
