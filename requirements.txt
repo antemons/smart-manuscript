@@ -14,7 +14,7 @@ numpy==1.14.0
 protobuf==3.5.1
 pycparser==2.18
 pyparsing==2.2.0
-PyPDF2==1.26.0
+PyPDF2==1.27.5
 python-dateutil==2.6.1
 pytz==2017.3
 requests==2.18.4
