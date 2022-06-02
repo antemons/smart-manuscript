@@ -6,7 +6,7 @@ chardet==3.0.4
 cycler==0.10.0
 enum34==1.1.6
 gi==1.2
-html5lib==0.9999999
+html5lib==0.99999999
 idna==2.6
 Markdown==2.6.11
 matplotlib==2.1.2
