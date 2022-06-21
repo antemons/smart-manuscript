@@ -10,7 +10,7 @@ html5lib==0.9999999
 idna==2.6
 Markdown==2.6.11
 matplotlib==2.1.2
-numpy==1.14.0
+numpy==1.22.0
 protobuf==3.5.1
 pycparser==2.18
 pyparsing==2.2.0
